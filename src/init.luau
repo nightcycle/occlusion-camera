@@ -16,7 +16,7 @@ local Frustum = require(_Package:WaitForChild("Frustum"))
 -- Constants
 local DEFAULT_MAX_RENDER_DISTANCE = 1024
 local DEBUG_RENDER = false
-local DEBUG_DRAW = true
+local DEBUG_DRAW = false
 
 -- Variables
 -- References
