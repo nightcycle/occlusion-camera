@@ -47,6 +47,9 @@ export type OcclusionCamera = {
 	GetVisibleParts: (self: OcclusionCamera) -> {[number]: BasePart},
 	GetObscuredParts: (self: OcclusionCamera) -> {[number]: BasePart},
 	GetPartsInFrustum: (self: OcclusionCamera) -> {[number]: BasePart},
+	GetIfPartIsVisible: (self: OcclusionCamera, part: BasePart) -> boolean,
+	GetIfPartIsObscured: (self: OcclusionCamera, part: BasePart) -> boolean,
+	GetIfPartIsInFrustum: (self: OcclusionCamera, part: BasePart) -> boolean,
 	Destroy: (self: OcclusionCamera) -> (),
 	new: (camera: Camera) -> OcclusionCamera,
 }
@@ -64,6 +67,18 @@ function OcclusionCamera:Destroy()
 		t[k] = nil
 	end
 	setmetatable(t, nil)
+end
+
+function OcclusionCamera:GetIfPartIsVisible(part: BasePart): boolean
+	return self._RenderRegistry[part] ~= nil
+end
+
+function OcclusionCamera:GetIfPartIsObscured(part: BasePart): boolean
+	return self._ObscuredRegistry[part] ~= nil
+end
+
+function OcclusionCamera:GetIfPartIsInFrustum(part: BasePart): boolean
+	return self._FrustumRegistry[part] ~= nil
 end
 
 function OcclusionCamera:GetVisibleParts(): {[number]: BasePart}
