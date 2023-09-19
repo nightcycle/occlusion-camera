@@ -280,7 +280,7 @@ end
 function Frustum:Render(sampleCount: number?): Part
 	sampleCount = sampleCount or DEFAULT_SAMPLE_COUNT
 	assert(sampleCount)
-	local dotWidth = math.min(math.min(self.ViewportSize.X, self.ViewportSize.Y)/(sampleCount^0.5))
+	local dotWidth = math.min(self.ViewportSize.X, self.ViewportSize.Y)/(sampleCount^0.5)
 	local renderResults = self:Rendercast(sampleCount)
 
 	local panel = Instance.new("Part")
