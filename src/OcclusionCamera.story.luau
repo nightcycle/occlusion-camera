@@ -19,7 +19,7 @@ return function(frame: Frame)
 	}
 	
 	task.spawn(function()
-		local OcclusionCamera = require(_Package:WaitForChild("OcclusionCamera"))
+		local OcclusionCamera = require(_Package)
 
 		local part = maid:GiveTask(Instance.new("Part"))
 		part.Name = "CameraHolder"
