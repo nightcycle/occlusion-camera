@@ -123,7 +123,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	local prevCF: CFrame?
 	local steps = 0
 	local duration = 0
-	self._Maid:GiveTask(RunService.RenderStepped:Connect(function(deltaTime: number)
+	self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 		if prevCF ~= self.Instance.CFrame or self.OnlyUpdateOnCameraMove == false then
 		
 			prevCF = self.Instance.CFrame
