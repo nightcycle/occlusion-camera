@@ -362,7 +362,7 @@ function Frustum.new(camera: Camera, maxRenderDistance: number): Frustum
 		
 	local self: Frustum = setmetatable({}, Frustum) :: any
 	
-	self.CFrame = camera.CFrame
+	self.CFrame = camera:GetRenderCFrame()
 	self.MaxRenderDistance = maxRenderDistance
 	self.ViewportSize = camera:GetAttribute("ViewportSize") or camera.ViewportSize
 	self.AspectRatio = self.ViewportSize.X / self.ViewportSize.Y
