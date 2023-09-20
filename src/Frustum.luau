@@ -177,7 +177,7 @@ function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?,
 			local origin = self.CFrame.Position + lookVector * -self.NearPlaneZ
 			local isVisible = true
 
-			local function cast(direction: Vector3, originalDistance: number): RaycastResult?
+			local function cast(direction: Vector3): RaycastResult?
 				local visColor = if isVisible then Color3.new(1,0,0) else Color3.new(0,1,1)
 				if USE_SHAPE_CASTS then
 					local remainingDistance = direction.Magnitude
@@ -272,7 +272,7 @@ function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?,
 			repeat
 				lastRaycastResult = nil
 				local direction = distance * lookVector
-				local result = cast(direction, originalDistance)
+				local result = cast(direction)
 
 
 				if result then
