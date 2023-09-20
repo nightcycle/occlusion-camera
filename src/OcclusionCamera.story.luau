@@ -10,6 +10,7 @@ local Maid = require(_Packages:WaitForChild("Maid"))
 -- Constants
 -- Variables
 -- References
+local Map = workspace:WaitForChild("Map")
 -- Class
 return function(frame: Frame)
 	local maid = Maid.new()
@@ -36,6 +37,8 @@ return function(frame: Frame)
 
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
 		oCam.OnlyUpdateOnCameraMove = false
+		oCam.RaycastParams.FilterDescendantsInstances = Map:GetChildren()
+		oCam.RaycastParams.FilterType = Enum.RaycastFilterType.Include
 
 		maid:GiveTask(RunService.RenderStepped:Connect(function()
 			camera.CFrame = part.CFrame

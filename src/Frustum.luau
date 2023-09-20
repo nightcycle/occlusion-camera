@@ -59,9 +59,9 @@ export type Frustum = {
 }
 -- Constants
 local DEFAULT_SAMPLE_COUNT = 512
-local USE_SHAPE_CASTS = false
-local DRAW_CASTS = false
-local MAX_SHAPE_CAST_LENGTH = 255
+-- local USE_SHAPE_CASTS = false
+-- local DRAW_CASTS = false
+-- local MAX_SHAPE_CAST_LENGTH = 255
 
 
 -- Variables
@@ -151,14 +151,14 @@ function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?,
 
 	local out: {[Vector2]: {[number]: OcclusionResult}} = {}
 
-	local function addItem(inst: Instance, duration: number)
-		task.delay(duration, function()
-			inst:Destroy()
-		end)
-	end
+	-- local function addItem(inst: Instance, duration: number)
+	-- 	task.delay(duration, function()
+	-- 		inst:Destroy()
+	-- 	end)
+	-- end
 
-	local yAngle = (self.HalfFieldOfView * 2) / #yStudOffsets
-	local xAngle = self.AspectRatio * yAngle
+	-- local yAngle = (self.HalfFieldOfView * 2) / #yStudOffsets
+	-- local xAngle = self.AspectRatio * yAngle
 
 	for iX, xOffset in ipairs(xStudOffsets) do
 		for iY, yOffset in ipairs(yStudOffsets) do
@@ -170,109 +170,109 @@ function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?,
 			local angle = GeometryUtil.getAngleBetweenTwoNormals(lookVector, self.CFrame.LookVector)
 
 			local distance = self.MaxRenderDistance / math.cos(angle)
-			local originalDistance = distance
+			-- local originalDistance = distance
 			local lastRaycastResult: RaycastResult?
 			local resultList: {[number]: OcclusionResult} = {}
 
 			local origin = self.CFrame.Position + lookVector * -self.NearPlaneZ
 			local isVisible = true
 
-			local function cast(direction: Vector3): RaycastResult?
-				local visColor = if isVisible then Color3.new(1,0,0) else Color3.new(0,1,1)
-				if USE_SHAPE_CASTS then
-					local remainingDistance = direction.Magnitude
-					local count = 0
-					repeat
-						local castStart = origin + direction.Unit*(MAX_SHAPE_CAST_LENGTH*count)
-						local castLength = math.min(MAX_SHAPE_CAST_LENGTH, remainingDistance)
+			-- local function cast(direction: Vector3): RaycastResult?
+			-- 	local visColor = if isVisible then Color3.new(1,0,0) else Color3.new(0,1,1)
+			-- 	if USE_SHAPE_CASTS then
+			-- 		local remainingDistance = direction.Magnitude
+			-- 		local count = 0
+			-- 		repeat
+			-- 			local castStart = origin + direction.Unit*(MAX_SHAPE_CAST_LENGTH*count)
+			-- 			local castLength = math.min(MAX_SHAPE_CAST_LENGTH, remainingDistance)
 
-						local cf = CFrame.new(
-							castStart, 
-							castStart + direction.Unit
-						)
+			-- 			local cf = CFrame.new(
+			-- 				castStart, 
+			-- 				castStart + direction.Unit
+			-- 			)
 
-						local size = Vector3.new(
-							math.min(1 * math.tan(xAngle/2) * math.max((self.CFrame.Position - castStart).Magnitude, -self.NearPlaneZ), 511),
-							math.min(2 * math.tan(yAngle/2) * math.max((self.CFrame.Position - castStart).Magnitude, -self.NearPlaneZ), 511),
-							0.05
-						)
+			-- 			local size = Vector3.new(
+			-- 				math.min(1 * math.tan(xAngle/2) * math.max((self.CFrame.Position - castStart).Magnitude, -self.NearPlaneZ), 511),
+			-- 				math.min(2 * math.tan(yAngle/2) * math.max((self.CFrame.Position - castStart).Magnitude, -self.NearPlaneZ), 511),
+			-- 				0.05
+			-- 			)
 						
-						local result = worldRoot:Blockcast(
-							cf, 
-							size,
-							direction.Unit * castLength, 
-							raycastParams
-						)
-						if DRAW_CASTS then
-							size += Vector3.new(0,0,castLength)
-						end
-						if result then
-							castLength = math.min(castLength, (castStart - result.Position).Magnitude)
-						end
-						if DRAW_CASTS then
-							if result then
-								size = (size * Vector3.new(1,1,0)) + Vector3.new(0,0,castLength)
-							end
+			-- 			local result = worldRoot:Blockcast(
+			-- 				cf, 
+			-- 				size,
+			-- 				direction.Unit * castLength, 
+			-- 				raycastParams
+			-- 			)
+			-- 			if DRAW_CASTS then
+			-- 				size += Vector3.new(0,0,castLength)
+			-- 			end
+			-- 			if result then
+			-- 				castLength = math.min(castLength, (castStart - result.Position).Magnitude)
+			-- 			end
+			-- 			if DRAW_CASTS then
+			-- 				if result then
+			-- 					size = (size * Vector3.new(1,1,0)) + Vector3.new(0,0,castLength)
+			-- 				end
 
-							local part = Instance.new("Part")
-							part.Color = Color3.fromHSV(
-								iX/#xStudOffsets, 
-								1 - ((castStart-origin).Magnitude / originalDistance), 
-								0.5 + 0.5 * (iY/#yStudOffsets)
-							)
-							part.Transparency = 0
-							part.CanCollide = false
-							part.CanQuery = false
-							part.CanTouch = false
-							part.Anchored = true
-							part.CFrame = cf
-							part.Position = castStart + lookVector * size.Z/2
-							part.Size = size
-							part.Parent = workspace
+			-- 				local part = Instance.new("Part")
+			-- 				part.Color = Color3.fromHSV(
+			-- 					iX/#xStudOffsets, 
+			-- 					1 - ((castStart-origin).Magnitude / originalDistance), 
+			-- 					0.5 + 0.5 * (iY/#yStudOffsets)
+			-- 				)
+			-- 				part.Transparency = 0
+			-- 				part.CanCollide = false
+			-- 				part.CanQuery = false
+			-- 				part.CanTouch = false
+			-- 				part.Anchored = true
+			-- 				part.CFrame = cf
+			-- 				part.Position = castStart + lookVector * size.Z/2
+			-- 				part.Size = size
+			-- 				part.Parent = workspace
 
-							addItem(part, 2)
-						end
+			-- 				addItem(part, 2)
+			-- 			end
 
-						remainingDistance -= castLength
+			-- 			remainingDistance -= castLength
 
-						if result then
-							return result
-						end
-						count += 1
+			-- 			if result then
+			-- 				return result
+			-- 			end
+			-- 			count += 1
 
-					until remainingDistance <= 0
-				else
-					local result = worldRoot:Raycast(origin, direction, raycastParams)
-					if DRAW_CASTS then
-						if result then
-							addItem(
-								Draw.vector(origin, (result.Position - origin), visColor),
-								2
-							)
-							addItem(
-								Draw.point(result.Position, visColor),
-								2
-							)
-						else
-							addItem(
-								Draw.vector(origin, direction, Color3.new(0,0,0)),
-								2
-							)
-						end
-						addItem(
-							Draw.labelledPoint(self.CFrame.Position + originalDistance * lookVector, `x: {math.round(math.deg(panAngle))}`),
-							2
-						)
-					end
+			-- 		until remainingDistance <= 0
+			-- 	else
+			-- 		local result = worldRoot:Raycast(origin, direction, raycastParams)
+			-- 		if DRAW_CASTS then
+			-- 			if result then
+			-- 				addItem(
+			-- 					Draw.vector(origin, (result.Position - origin), visColor),
+			-- 					2
+			-- 				)
+			-- 				addItem(
+			-- 					Draw.point(result.Position, visColor),
+			-- 					2
+			-- 				)
+			-- 			else
+			-- 				addItem(
+			-- 					Draw.vector(origin, direction, Color3.new(0,0,0)),
+			-- 					2
+			-- 				)
+			-- 			end
+			-- 			addItem(
+			-- 				Draw.labelledPoint(self.CFrame.Position + originalDistance * lookVector, `x: {math.round(math.deg(panAngle))}`),
+			-- 				2
+			-- 			)
+			-- 		end
 
-					return result
-				end
-				return nil
-			end
+			-- 		return result
+			-- 	end
+			-- 	return nil
+			-- end
 			repeat
 				lastRaycastResult = nil
 				local direction = distance * lookVector
-				local result = cast(direction)
+				local result = worldRoot:Raycast(origin, direction, raycastParams)--cast(direction)
 
 
 				if result then
