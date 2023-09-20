@@ -115,10 +115,10 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	self._ObscuredRegistry = {}
 
 	self.RaycastParams = RaycastParams.new()
-	self.RaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	self.RaycastParams.FilterType = Enum.RaycastFilterType.Include
 	self.RaycastParams.FilterDescendantsInstances = {}
 	self.RaycastParams.IgnoreWater = false
-	self.RaycastParams.RespectCanCollide = true
+	self.RaycastParams.RespectCanCollide = false
 
 	local prevCF: CFrame?
 	local steps = 0
