@@ -25,7 +25,7 @@ export type OcclusionResult = {
 export type Frustum = {
 	__index: Frustum,
 	CFrame: CFrame,
-	MaxRenderDistance: number,
+	FarPlaneDistance: number,
 	ViewportSize: Vector2,
 	AspectRatio: number,
 	NearPlaneZ: number,
@@ -52,6 +52,7 @@ export type Frustum = {
 	},
 	TagCast: (self: Frustum, sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?) -> (),
 	GetIfSphereRendered: (self: Frustum, origin: Vector3, radius: number) -> boolean,
+	_GetNearPlaneRenderCells: (self: Frustum, cellCount: number) -> {[number]: Vector2},
 	Draw: (self: Frustum) -> Folder,
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
@@ -61,7 +62,6 @@ local VISIBLE_TAG = Config.Tag.Visible
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local OBSCURED_TAG = Config.Tag.Obscured
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
-local DEBUG_CAST = false
 
 -- Variables
 -- References
@@ -80,6 +80,69 @@ function newPlane(p0: Vector3, p1: Vector3, p2: Vector3): Plane
 	return plane
 end
 
+function getCellVector(camCF: CFrame, nearPlaneDistance: number, nearPlanePosition: Vector2)
+	local tiltAngle = math.atan2(nearPlanePosition.Y, math.abs(nearPlaneDistance))
+	local panAngle = math.atan2(nearPlanePosition.X, math.abs(nearPlaneDistance))
+
+	return (camCF * CFrame.Angles(0, panAngle, 0) * CFrame.Angles(tiltAngle, 0, 0)).LookVector.Unit
+end
+
+function getCellRenderDistance(camCF: CFrame, lookVector: Vector3, farPlaneDistance: number): number
+	local angle = GeometryUtil.getAngleBetweenTwoNormals(lookVector, camCF.LookVector)
+	return farPlaneDistance/math.cos(angle)
+end
+
+function recursiveCellCast(
+	camCF: CFrame, 
+	lookVector: Vector3, 
+	nearPlaneDistance: number, 
+	cellRenderDistance: number,
+	raycastParams: RaycastParams, 
+	worldRoot: WorldRoot,
+	noOccludeTag: string?
+): {[number]: OcclusionResult}
+	local lastRaycastResult: RaycastResult?
+	local origin = camCF.Position + lookVector * math.abs(nearPlaneDistance)
+	local isVisible = true
+
+	local distance = cellRenderDistance
+	local count = 0
+	local out: {[number]: OcclusionResult} = {}
+	repeat
+		count += 1
+		lastRaycastResult = nil
+		local direction = distance * lookVector
+		local result = worldRoot:Raycast(origin, direction, raycastParams)
+		if result then
+			
+			-- print("A")
+			table.insert(out, {
+				IsVisible = isVisible,
+				Result = result,
+			})
+
+			if isVisible then
+				if noOccludeTag then
+					if not CollectionService:HasTag(result.Instance, noOccludeTag) then
+						isVisible = false
+					end
+				else
+					isVisible = false
+				end
+			end
+			distance -= (result.Position - origin).Magnitude
+			origin = result.Position
+		end
+		lastRaycastResult = result
+	until lastRaycastResult == nil or distance <= 0 or count >= 100
+
+	if count >= 100 then
+		error(`inf recursion possible`)
+	end
+
+	return out
+end
+
 -- Class
 local Frustum = {} :: Frustum
 Frustum.__index = Frustum
@@ -96,11 +159,10 @@ function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean
 	return true
 end
 
-
-function Frustum:TagCast(sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?)
+function Frustum:_GetNearPlaneRenderCells(cellCount: number): {[number]: Vector2}
 
 	local area = self.ViewportSize.X * self.ViewportSize.Y
-	local cellPixelWidth = (area ^ 0.5) / (sampleCount ^ 0.5)
+	local cellPixelWidth = (area ^ 0.5) / (cellCount ^ 0.5)
 
 	local function getStudOffsets(maxPixelCount: number, nearStudWidth: number): {[number]: number}
 		local count = math.floor(maxPixelCount / cellPixelWidth)
@@ -125,6 +187,18 @@ function Frustum:TagCast(sampleCount: number, raycastParams: RaycastParams?, wor
 		(self.NearBottomLeft - self.NearTopLeft).Magnitude
 	)
 
+	local samples: {[number]: Vector2} = {}
+	for iX, xOffset in ipairs(xStudOffsets) do
+		for iY, yOffset in ipairs(yStudOffsets) do
+			table.insert(samples, Vector2.new(xOffset, yOffset))
+		end
+	end
+
+	return samples
+end
+
+
+function Frustum:TagCast(sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?)
 	worldRoot = worldRoot or workspace
 	assert(worldRoot)
 
@@ -138,85 +212,60 @@ function Frustum:TagCast(sampleCount: number, raycastParams: RaycastParams?, wor
 		raycastParams = params
 	end
 	assert(raycastParams)
+	
+	for i, offset in ipairs(self:_GetNearPlaneRenderCells(sampleCount)) do
 
-	for iX, xOffset in ipairs(xStudOffsets) do
-		for iY, yOffset in ipairs(yStudOffsets) do
+		local lookVector = getCellVector(self.CFrame, self.NearPlaneZ, offset)
+		local distance = getCellRenderDistance(self.CFrame, lookVector, self.FarPlaneDistance)
 
-			local tiltAngle = math.atan2(yOffset, -self.NearPlaneZ)
-			local panAngle = math.atan2(xOffset, -self.NearPlaneZ)
+		-- local vec = Draw.vector(self.CFrame.Position, (distance*lookVector - self.CFrame.Position))
+		-- if vec then
+		-- 	task.spawn(function()
+		-- 		task.wait()
+		-- 		vec:Destroy()
+		-- 	end)
+		-- end
 
-			local lookVector = (self.CFrame * CFrame.Angles(0, panAngle, 0) * CFrame.Angles(tiltAngle, 0, 0)).LookVector.Unit
-			local angle = GeometryUtil.getAngleBetweenTwoNormals(lookVector, self.CFrame.LookVector)
+		local out = recursiveCellCast(
+			self.CFrame, 
+			lookVector, 
+			self.NearPlaneZ, 
+			distance, 
+			raycastParams, 
+			worldRoot, 
+			noOccludeTag
+		)
 
-			local distance = self.MaxRenderDistance / math.cos(angle)
+		for i, obscureResult in ipairs(out) do
+			local result = obscureResult.Result
+			local inst = result.Instance
+			local isVisible = obscureResult.IsVisible
 
-			local lastRaycastResult: RaycastResult?
-			local origin = self.CFrame.Position + lookVector * -self.NearPlaneZ
-			local isVisible = true
+			inst:SetAttribute(LAST_SEEN_ATTR_KEY, tick())
 
-			local count = 0
-			repeat
-				count += 1
-				lastRaycastResult = nil
-				local direction = distance * lookVector
-				local result = worldRoot:Raycast(origin, direction, raycastParams)
-				if result then
-					local inst = result.Instance
-					inst:SetAttribute(LAST_SEEN_ATTR_KEY, tick())
-
-					if not CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
-						CollectionService:AddTag(inst, IN_FRUSTUM_TAG)
-					end
-					if isVisible then
-						if not CollectionService:HasTag(inst, VISIBLE_TAG) then
-							CollectionService:AddTag(inst, VISIBLE_TAG)
-						end
-						if CollectionService:HasTag(inst, OBSCURED_TAG) then
-							CollectionService:RemoveTag(inst, OBSCURED_TAG)
-						end
-						if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
-							CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
-						end
-					else
-						if not CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
-							CollectionService:AddTag(inst, INITIAL_OBSCURED_TAG)
-						end
-						if CollectionService:HasTag(inst, VISIBLE_TAG) then
-							CollectionService:RemoveTag(inst, VISIBLE_TAG)
-						end
-					end
-
-					if isVisible then
-						if noOccludeTag then
-							if not CollectionService:HasTag(inst, noOccludeTag) then
-								isVisible = false
-							end
-						else
-							isVisible = false
-						end
-					end
-					distance -= (result.Position - origin).Magnitude
-					origin = result.Position
-				end
-				if DEBUG_CAST then
-					if result then
-						local vec = Draw.vector(origin, (result.Position - origin), Color3.new(1,0,0), nil, 0.5)
-						task.delay(1/60, function()
-							vec:Destroy()
-						end)
-					else
-						local vec = Draw.vector(origin, direction, Color3.new(0,0,1), nil, 0.5)
-						task.delay(1/60, function()
-							vec:Destroy()
-						end)
-					end
-				end
-				lastRaycastResult = result
-			until lastRaycastResult == nil or distance <= 0 or count >= 100
-
-			if count >= 100 then
-				error(`inf recursion possible: {iX}, {iY}`)
+			if not CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+				CollectionService:AddTag(inst, IN_FRUSTUM_TAG)
 			end
+			
+			if isVisible then
+				if not CollectionService:HasTag(inst, VISIBLE_TAG) then
+					CollectionService:AddTag(inst, VISIBLE_TAG)
+				end
+				if CollectionService:HasTag(inst, OBSCURED_TAG) then
+					CollectionService:RemoveTag(inst, OBSCURED_TAG)
+				end
+				if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
+					CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
+				end
+			else
+				if not CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
+					CollectionService:AddTag(inst, INITIAL_OBSCURED_TAG)
+				end
+				if CollectionService:HasTag(inst, VISIBLE_TAG) then
+					CollectionService:RemoveTag(inst, VISIBLE_TAG)
+				end
+			end
+
 		end
 	end
 end
@@ -254,22 +303,22 @@ function Frustum.new(camera: Camera, maxRenderDistance: number): Frustum
 	local self: Frustum = setmetatable({}, Frustum) :: any
 	
 	self.CFrame = camera:GetRenderCFrame()
-	self.MaxRenderDistance = maxRenderDistance
+	self.FarPlaneDistance = maxRenderDistance
 	self.ViewportSize = camera:GetAttribute("ViewportSize") or camera.ViewportSize
 	self.AspectRatio = self.ViewportSize.X / self.ViewportSize.Y
 	self.NearPlaneZ = camera:GetAttribute("NearPlaneZ") or camera.NearPlaneZ
 
 	self.HalfFieldOfView = math.rad(camera.FieldOfView / 2)
 	
-	self.HalfFarPlaneHeight = 2 * math.tan(self.HalfFieldOfView) * self.MaxRenderDistance / 2
+	self.HalfFarPlaneHeight = 2 * math.tan(self.HalfFieldOfView) * self.FarPlaneDistance / 2
 	self.HalfFarPlaneWidth = self.HalfFarPlaneHeight * self.AspectRatio
 	self.HalfNearPlaneHeight = 2 * math.tan(self.HalfFieldOfView) * -self.NearPlaneZ / 2
 	self.HalfNearPlaneWidth = self.HalfNearPlaneHeight * self.AspectRatio
 
-	self.FarTopLeft = self.CFrame * Vector3.new(-self.HalfFarPlaneWidth, self.HalfFarPlaneHeight, -self.MaxRenderDistance)
-	self.FarTopRight = self.CFrame * Vector3.new(self.HalfFarPlaneWidth, self.HalfFarPlaneHeight, -self.MaxRenderDistance)
-	self.FarBottomRight = self.CFrame * Vector3.new(self.HalfFarPlaneWidth, -self.HalfFarPlaneHeight, -self.MaxRenderDistance)
-	self.FarBottomLeft = self.CFrame * Vector3.new(-self.HalfFarPlaneWidth, -self.HalfFarPlaneHeight, -self.MaxRenderDistance)
+	self.FarTopLeft = self.CFrame * Vector3.new(-self.HalfFarPlaneWidth, self.HalfFarPlaneHeight, -self.FarPlaneDistance)
+	self.FarTopRight = self.CFrame * Vector3.new(self.HalfFarPlaneWidth, self.HalfFarPlaneHeight, -self.FarPlaneDistance)
+	self.FarBottomRight = self.CFrame * Vector3.new(self.HalfFarPlaneWidth, -self.HalfFarPlaneHeight, -self.FarPlaneDistance)
+	self.FarBottomLeft = self.CFrame * Vector3.new(-self.HalfFarPlaneWidth, -self.HalfFarPlaneHeight, -self.FarPlaneDistance)
 
 	self.NearTopLeft = self.CFrame * Vector3.new(-self.HalfNearPlaneWidth, self.HalfNearPlaneHeight, self.NearPlaneZ)
 	self.NearTopRight = self.CFrame * Vector3.new(self.HalfNearPlaneWidth, self.HalfNearPlaneHeight, self.NearPlaneZ)

@@ -105,7 +105,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	self.MaxRenderDistance = 512
 	self.Instance = camera
 	self.OnlyUpdateOnCameraMove = true
-	self.SampleCount = 64
+	self.SampleCount = 256
 	self.WorldRoot = workspace
 	self.NoOccludeTag = "OcclusionCameraNoOcclude"
 
