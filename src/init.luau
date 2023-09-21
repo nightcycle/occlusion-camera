@@ -3,22 +3,31 @@ local _Package = script
 local _Packages = _Package.Parent
 -- Services
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 
 -- Packages
 local Maid = require(_Packages:WaitForChild("Maid"))
 local Signal = require(_Packages:WaitForChild("Signal"))
 local TableUtil = require(_Packages:WaitForChild("TableUtil"))
 
+
 -- Modules
+local Config = require(_Package:WaitForChild("Config"))
 local Frustum = require(_Package:WaitForChild("Frustum"))
 
 -- Types
 -- Constants
-local DEBUG_RENDER = false
-local DEBUG_DRAW = _Package:GetFullName() == "ReplicatedStorage.Packages.package"
+local DEBUG_DRAW = false --_Package:GetFullName() == "ReplicatedStorage.Packages.package"
+local IN_FRUSTUM_TAG = Config.Tag.InFrustum
+local OBSCURED_TAG = Config.Tag.Obscured
+local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
+local VISIBLE_TAG = Config.Tag.Visible
+local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
+local PROCESS_LIMIT = 3
 -- Variables
 -- References
 -- Private Functions
+
 -- Class
 -- Types
 type Signal = Signal.Signal
@@ -27,10 +36,6 @@ export type OcclusionCamera = {
 	__index: OcclusionCamera,
 	_Maid: Maid,
 	_IsAlive: boolean,
-	_Frequency: number,
-	_FrustumRegistry: {[BasePart]: number},
-	_RenderRegistry: {[BasePart]: number},
-	_ObscuredRegistry: {[BasePart]: number},
 	Instance: Camera,
 	MaxRenderDistance: number,
 	OnlyUpdateOnCameraMove: boolean,
@@ -69,27 +74,27 @@ function OcclusionCamera:Destroy()
 end
 
 function OcclusionCamera:GetIfPartIsVisible(part: BasePart): boolean
-	return self._RenderRegistry[part] ~= nil
+	return CollectionService:HasTag(part, VISIBLE_TAG)
 end
 
 function OcclusionCamera:GetIfPartIsObscured(part: BasePart): boolean
-	return self._ObscuredRegistry[part] ~= nil
+	return CollectionService:HasTag(part, OBSCURED_TAG)
 end
 
 function OcclusionCamera:GetIfPartIsInFrustum(part: BasePart): boolean
-	return self._FrustumRegistry[part] ~= nil
+	return CollectionService:HasTag(part, IN_FRUSTUM_TAG)
 end
 
 function OcclusionCamera:GetVisibleParts(): {[number]: BasePart}
-	return TableUtil.keys(self._RenderRegistry)
+	return CollectionService:GetTagged(VISIBLE_TAG) :: {[number]: any}
 end
 
 function OcclusionCamera:GetPartsInFrustum(): {[number]: BasePart}
-	return TableUtil.keys(self._FrustumRegistry)
+	return CollectionService:GetTagged(IN_FRUSTUM_TAG) :: {[number]: any}
 end
 
 function OcclusionCamera:GetObscuredParts(): {[number]: BasePart}
-	return TableUtil.keys(self._ObscuredRegistry)
+	return CollectionService:GetTagged(OBSCURED_TAG) :: {[number]: any}
 end
 
 function OcclusionCamera.new(camera: Camera): OcclusionCamera
@@ -100,7 +105,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	self.MaxRenderDistance = 512
 	self.Instance = camera
 	self.OnlyUpdateOnCameraMove = true
-	self.SampleCount = 512
+	self.SampleCount = 64
 	self.WorldRoot = workspace
 	self.NoOccludeTag = "OcclusionCameraNoOcclude"
 
@@ -110,9 +115,6 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	self.OnPartEnterFrustum = self._Maid:GiveTask(Signal.new())
 
 	self.ObscureDelay = 1
-	self._FrustumRegistry = {}
-	self._RenderRegistry = {}
-	self._ObscuredRegistry = {}
 
 	self.RaycastParams = RaycastParams.new()
 	self.RaycastParams.FilterType = Enum.RaycastFilterType.Include
@@ -121,150 +123,121 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	self.RaycastParams.RespectCanCollide = false
 
 	local prevCF: CFrame?
-	local steps = 0
-	local duration = 0
 
 	self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 		if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
-
 			prevCF = self.Instance:GetRenderCFrame()
-			local start = tick()
 	
+			local a = tick()
+
 			local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
-			local frustumRegistry = table.clone(self._FrustumRegistry)
-	
-			local renderedParts: {[number]: BasePart} = {}
-			local obscuredParts: {[number]: BasePart} = {}
-	
-			do
-				local renderRegistry: {[BasePart]: true} = {}
-				local obscureRegistry: {[BasePart]: true} = {}
-	
-				for kV2, occlusionResults in pairs(frustum:Occludecast(
-					self.SampleCount, 
-					self.RaycastParams, 
-					self.WorldRoot, 
-					self.NoOccludeTag
-				)) do
-					for i, occlusionResult in ipairs(occlusionResults) do
-						local part = occlusionResult.Result.Instance
-						assert(part:IsA("BasePart"), `occlusion result wasn't basePart, it was a {part.ClassName}`)
-						if occlusionResult.IsVisible then
-							renderRegistry[part] = true
-							if self._RenderRegistry[part] then
-								self._RenderRegistry[part] = tick()
-							end
-						else
-							obscureRegistry[part] = true
-							if self._ObscuredRegistry[part] then
-								self._ObscuredRegistry[part] = tick()
-							end
-						end
-						if self._FrustumRegistry[part] then
-							self._FrustumRegistry[part] = tick()
-						end
-					end
-				end
-	
-				renderedParts = TableUtil.keys(renderRegistry)
-				obscuredParts = TableUtil.keys(obscureRegistry)
-			end
-	
-			local frustumParts = TableUtil.deduplicate(TableUtil.append(renderedParts, obscuredParts))
-	
-			-- get parts in frustum
-			local enterParts: {[number]: BasePart} = {}
-			for i, part in ipairs(frustumParts) do
-				self._FrustumRegistry[part] = tick()
-				if frustumRegistry[part] then
-					frustumRegistry[part] = nil --remove from copy to find parts that no longer exist
-				else
-					table.insert(enterParts, part)
-				end
-			end
-	
-			local t = tick()
-			local exitParts: {[number]: BasePart} = {}
-			for part, lastSeen in pairs(frustumRegistry) do
-				if t - lastSeen > self.ObscureDelay then
-					self._FrustumRegistry[part] = nil
-					self._ObscuredRegistry[part] = nil
-					self._RenderRegistry[part] = nil
-					table.insert(exitParts, part)
-				end
-			end
-			for i, part in ipairs(enterParts) do
-				self.OnPartEnterFrustum:Fire(part)
-			end
-			for i, part in ipairs(exitParts) do
-				self.OnPartExitFrustum:Fire(part)
-			end
-	
-			-- update obscured and rendered parts
-			local renderRegistry = table.clone(self._RenderRegistry)
-	
-			local newObscuredParts: {[number]: BasePart} = {}
-	
-			for part, lastSeen in pairs(self._RenderRegistry) do
-				if t - lastSeen > self.ObscureDelay then
-					self._ObscuredRegistry[part] = tick()
-					self._RenderRegistry[part] = nil
-					table.insert(newObscuredParts, part)
-				end
-			end
-	
-	
-			local newRenderedParts: {[number]: BasePart} = {}
-			for i, part in ipairs(renderedParts) do
-				self._RenderRegistry[part] = tick()
-				if renderRegistry[part] then
-					renderRegistry[part] = nil --remove from copy of registry to allow for finding of those that no longer are detected
-				else
-					table.insert(newRenderedParts, part)
-				end
-			end
-	
-			local obscureRegistry = table.clone(self._ObscuredRegistry)
-	
-			for i, part in ipairs(obscuredParts) do
-				if self._RenderRegistry[part] == nil then --if a separate triangle of the part was rendered remove it from consideration
-					self._ObscuredRegistry[part] = tick()
-					if obscureRegistry[part] then
-						obscureRegistry[part] = nil --remove from copy of registry to allow for finding of those that no longer are detected
-					else
-						table.insert(newObscuredParts, part)
-					end
-				end
-			end
-	
-	
-			for i, part in ipairs(newRenderedParts) do
-				self.OnViewPart:Fire(part)
-			end
-			for i, part in ipairs(newObscuredParts) do
-				self.OnObscurePart:Fire(part)
-			end
-	
-			local finish = tick()
-			duration += finish - start
-			steps += 1
-	
-			if DEBUG_RENDER then
-				self._Maid._frustumRender = frustum:Render(self.SampleCount)
-			end
+
+			local a2 = tick()
+			self.Instance:SetAttribute("Construction", math.round(1000*(a2-a)/(1/60)))
+
 			if DEBUG_DRAW then
 				self._Maid._frustumDraw = frustum:Draw()
-			end		
-	
-			if steps%60 == 0 then
-				self._Frequency = 1/(duration/steps)
-				steps = 0
-				duration = 0
+			end
+
+			local a3 = tick()
+			self.Instance:SetAttribute("Draw", math.round(1000*(a3-a2)/(1/60)))
+
+			frustum:TagCast(
+				self.SampleCount, 
+				self.RaycastParams, 
+				self.WorldRoot, 
+				self.NoOccludeTag
+			)
+			local b = tick()
+			self.Instance:SetAttribute("Cast", math.round(1000*(b-a3)/(1/60)))
+
+			local tagged = CollectionService:GetTagged(IN_FRUSTUM_TAG)
+			table.sort(tagged, function(a: Instance, b: Instance)
+				local aTick = a:GetAttribute(LAST_SEEN_ATTR_KEY)
+				local bTick = b:GetAttribute(LAST_SEEN_ATTR_KEY)
+				if bTick and aTick then
+					return aTick < bTick
+				elseif bTick then
+					return false
+				elseif aTick then
+					return true
+				else
+					return false
+				end
+			end)
+
+			local c = tick()
+			self.Instance:SetAttribute("Sort", math.round(1000*(c-b)/(1/60)))
+
+
+			local t = tick()
+			for i, inst in ipairs(tagged) do
+				if i > PROCESS_LIMIT then
+					break
+				end
+				local lastSeen = inst:GetAttribute(LAST_SEEN_ATTR_KEY)
+				if lastSeen then
+					if t-lastSeen > self.ObscureDelay then
+						if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+							CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+						end
+					end
+				else
+					if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+						CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+					end
+				end
+			end
+			local d = tick()
+			self.Instance:SetAttribute("Filter", math.round(1000*(d-c)/(1/60)))
+		end
+	end))
+
+	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(VISIBLE_TAG):Connect(function(inst: Instance)
+		assert(inst:IsA("BasePart"))
+		self.OnViewPart:Fire(inst)
+	end))
+
+	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(INITIAL_OBSCURED_TAG):Connect(function(inst: Instance)
+		assert(inst:IsA("BasePart"))
+		if self.ObscureDelay > 0 then
+			task.wait(self.ObscureDelay)
+
+			if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) and self._IsAlive then
+				if not CollectionService:HasTag(inst, OBSCURED_TAG) then
+					CollectionService:AddTag(inst, OBSCURED_TAG)
+				end
+			end
+		else
+			if not CollectionService:HasTag(inst, OBSCURED_TAG) then
+				CollectionService:AddTag(inst, OBSCURED_TAG)
 			end
 		end
 	end))
-	-- end)
-	
+	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(OBSCURED_TAG):Connect(function(inst: Instance)
+		assert(inst:IsA("BasePart"))
+		self.OnObscurePart:Fire(inst)
+	end))
+
+	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(IN_FRUSTUM_TAG):Connect(function(inst: Instance)
+		assert(inst:IsA("BasePart"))
+		self.OnPartEnterFrustum:Fire(inst)
+	end))
+
+	self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(function(inst: Instance)
+		if not inst:IsDescendantOf(game) then return end
+		inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
+		if CollectionService:HasTag(inst, OBSCURED_TAG) then
+			CollectionService:RemoveTag(inst, OBSCURED_TAG)
+		end
+		if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
+			CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
+		end
+		if CollectionService:HasTag(inst, VISIBLE_TAG) then
+			CollectionService:RemoveTag(inst, VISIBLE_TAG)
+		end
+		self.OnPartExitFrustum:Fire(inst)
+	end))
 
 	return self
 end

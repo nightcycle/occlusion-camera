@@ -3,11 +3,18 @@ local _Package = script.Parent
 local _Packages = _Package.Parent
 -- Services
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 -- Packages
 local Maid = require(_Packages:WaitForChild("Maid"))
 -- Modules
+local Config = require(_Package:WaitForChild("Config"))
 -- Types
 -- Constants
+local IN_FRUSTUM_TAG = Config.Tag.InFrustum
+local OBSCURED_TAG = Config.Tag.Obscured
+local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
+local VISIBLE_TAG = Config.Tag.Visible
+local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
 -- Variables
 -- References
 local Map = workspace:WaitForChild("Map")
@@ -37,12 +44,11 @@ return function(frame: Frame)
 
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
 		oCam.OnlyUpdateOnCameraMove = false
-		oCam.RaycastParams.FilterDescendantsInstances = Map:GetChildren()
+		oCam.RaycastParams.FilterDescendantsInstances = Map:GetChildren()--}
 		oCam.RaycastParams.FilterType = Enum.RaycastFilterType.Include
 
 		maid:GiveTask(RunService.RenderStepped:Connect(function()
 			camera.CFrame = part.CFrame
-			part:SetAttribute("Frequency", oCam._Frequency)
 		end))
 
 		maid:GiveTask(oCam.OnPartEnterFrustum:Connect(function(part: BasePart)
@@ -84,6 +90,12 @@ return function(frame: Frame)
 		end)
 	return function()
 		maid:Destroy()
+		for i, inst in ipairs(CollectionService:GetTagged(IN_FRUSTUM_TAG)) do
+			CollectionService:RemoveTag(inst, OBSCURED_TAG)
+			CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
+			CollectionService:RemoveTag(inst, VISIBLE_TAG)
+			inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
+		end
 		for k, v in pairs(highlights) do
 			highlights[k] = nil
 			v:Destroy()

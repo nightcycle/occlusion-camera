@@ -4,15 +4,14 @@ local _Package = script.Parent
 local _Packages = _Package.Parent
 
 -- Services
-local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
 -- Packages
 local GeometryUtil = require(_Packages:WaitForChild("GeometryUtil"))
 local Draw = require(_Packages:WaitForChild("Draw"))
-local TableUtil = require(_Packages:WaitForChild("TableUtil"))
 
 -- Modules
+local Config = require(_Package:WaitForChild("Config"))
 
 -- Types
 export type Plane = {
@@ -51,22 +50,21 @@ export type Frustum = {
 		Left: Plane,
 		Right: Plane,
 	},
-	Occludecast: (self: Frustum, sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?) -> {[Vector2]: {[number]: OcclusionResult}},
+	TagCast: (self: Frustum, sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?) -> (),
 	GetIfSphereRendered: (self: Frustum, origin: Vector3, radius: number) -> boolean,
 	Draw: (self: Frustum) -> Folder,
-	Render: (self: Frustum, sampleCount: number?) -> Part,
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
 -- Constants
-local DEFAULT_SAMPLE_COUNT = 512
--- local USE_SHAPE_CASTS = false
--- local DRAW_CASTS = false
--- local MAX_SHAPE_CAST_LENGTH = 255
-
+local IN_FRUSTUM_TAG = Config.Tag.InFrustum
+local VISIBLE_TAG = Config.Tag.Visible
+local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
+local OBSCURED_TAG = Config.Tag.Obscured
+local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
+local DEBUG_CAST = false
 
 -- Variables
 -- References
-local Terrain = workspace:WaitForChild("Terrain") :: Terrain
 
 -- Private Functions
 function newPlane(p0: Vector3, p1: Vector3, p2: Vector3): Plane
@@ -99,7 +97,7 @@ function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean
 end
 
 
-function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?): {[Vector2]: {[number]: OcclusionResult}}
+function Frustum:TagCast(sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?)
 
 	local area = self.ViewportSize.X * self.ViewportSize.Y
 	local cellPixelWidth = (area ^ 0.5) / (sampleCount ^ 0.5)
@@ -118,7 +116,6 @@ function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?,
 		return coordinates
 	end
 
-
 	local xStudOffsets = getStudOffsets(
 		self.ViewportSize.X, 
 		(self.NearBottomLeft - self.NearBottomRight).Magnitude
@@ -134,31 +131,13 @@ function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?,
 	if not raycastParams then
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Exclude
-
-		local player = Players.LocalPlayer
-		if player and player.Character then
-			params.FilterDescendantsInstances = {player.Character}
-		else
-			params.FilterDescendantsInstances = {}
-		end
-
 		params.IgnoreWater = false
-		params.RespectCanCollide = true
+		params.RespectCanCollide = false
+		params.FilterDescendantsInstances = {}
 
 		raycastParams = params
 	end
 	assert(raycastParams)
-
-	local out: {[Vector2]: {[number]: OcclusionResult}} = {}
-
-	-- local function addItem(inst: Instance, duration: number)
-	-- 	task.delay(duration, function()
-	-- 		inst:Destroy()
-	-- 	end)
-	-- end
-
-	-- local yAngle = (self.HalfFieldOfView * 2) / #yStudOffsets
-	-- local xAngle = self.AspectRatio * yAngle
 
 	for iX, xOffset in ipairs(xStudOffsets) do
 		for iY, yOffset in ipairs(yStudOffsets) do
@@ -170,117 +149,43 @@ function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?,
 			local angle = GeometryUtil.getAngleBetweenTwoNormals(lookVector, self.CFrame.LookVector)
 
 			local distance = self.MaxRenderDistance / math.cos(angle)
-			-- local originalDistance = distance
-			local lastRaycastResult: RaycastResult?
-			local resultList: {[number]: OcclusionResult} = {}
 
+			local lastRaycastResult: RaycastResult?
 			local origin = self.CFrame.Position + lookVector * -self.NearPlaneZ
 			local isVisible = true
 
-			-- local function cast(direction: Vector3): RaycastResult?
-			-- 	local visColor = if isVisible then Color3.new(1,0,0) else Color3.new(0,1,1)
-			-- 	if USE_SHAPE_CASTS then
-			-- 		local remainingDistance = direction.Magnitude
-			-- 		local count = 0
-			-- 		repeat
-			-- 			local castStart = origin + direction.Unit*(MAX_SHAPE_CAST_LENGTH*count)
-			-- 			local castLength = math.min(MAX_SHAPE_CAST_LENGTH, remainingDistance)
-
-			-- 			local cf = CFrame.new(
-			-- 				castStart, 
-			-- 				castStart + direction.Unit
-			-- 			)
-
-			-- 			local size = Vector3.new(
-			-- 				math.min(1 * math.tan(xAngle/2) * math.max((self.CFrame.Position - castStart).Magnitude, -self.NearPlaneZ), 511),
-			-- 				math.min(2 * math.tan(yAngle/2) * math.max((self.CFrame.Position - castStart).Magnitude, -self.NearPlaneZ), 511),
-			-- 				0.05
-			-- 			)
-						
-			-- 			local result = worldRoot:Blockcast(
-			-- 				cf, 
-			-- 				size,
-			-- 				direction.Unit * castLength, 
-			-- 				raycastParams
-			-- 			)
-			-- 			if DRAW_CASTS then
-			-- 				size += Vector3.new(0,0,castLength)
-			-- 			end
-			-- 			if result then
-			-- 				castLength = math.min(castLength, (castStart - result.Position).Magnitude)
-			-- 			end
-			-- 			if DRAW_CASTS then
-			-- 				if result then
-			-- 					size = (size * Vector3.new(1,1,0)) + Vector3.new(0,0,castLength)
-			-- 				end
-
-			-- 				local part = Instance.new("Part")
-			-- 				part.Color = Color3.fromHSV(
-			-- 					iX/#xStudOffsets, 
-			-- 					1 - ((castStart-origin).Magnitude / originalDistance), 
-			-- 					0.5 + 0.5 * (iY/#yStudOffsets)
-			-- 				)
-			-- 				part.Transparency = 0
-			-- 				part.CanCollide = false
-			-- 				part.CanQuery = false
-			-- 				part.CanTouch = false
-			-- 				part.Anchored = true
-			-- 				part.CFrame = cf
-			-- 				part.Position = castStart + lookVector * size.Z/2
-			-- 				part.Size = size
-			-- 				part.Parent = workspace
-
-			-- 				addItem(part, 2)
-			-- 			end
-
-			-- 			remainingDistance -= castLength
-
-			-- 			if result then
-			-- 				return result
-			-- 			end
-			-- 			count += 1
-
-			-- 		until remainingDistance <= 0
-			-- 	else
-			-- 		local result = worldRoot:Raycast(origin, direction, raycastParams)
-			-- 		if DRAW_CASTS then
-			-- 			if result then
-			-- 				addItem(
-			-- 					Draw.vector(origin, (result.Position - origin), visColor),
-			-- 					2
-			-- 				)
-			-- 				addItem(
-			-- 					Draw.point(result.Position, visColor),
-			-- 					2
-			-- 				)
-			-- 			else
-			-- 				addItem(
-			-- 					Draw.vector(origin, direction, Color3.new(0,0,0)),
-			-- 					2
-			-- 				)
-			-- 			end
-			-- 			addItem(
-			-- 				Draw.labelledPoint(self.CFrame.Position + originalDistance * lookVector, `x: {math.round(math.deg(panAngle))}`),
-			-- 				2
-			-- 			)
-			-- 		end
-
-			-- 		return result
-			-- 	end
-			-- 	return nil
-			-- end
+			local count = 0
 			repeat
+				count += 1
 				lastRaycastResult = nil
 				local direction = distance * lookVector
-				local result = worldRoot:Raycast(origin, direction, raycastParams)--cast(direction)
-
-
+				local result = worldRoot:Raycast(origin, direction, raycastParams)
 				if result then
 					local inst = result.Instance
-					table.insert(resultList, {
-						IsVisible = isVisible,
-						Result = result,
-					})
+					inst:SetAttribute(LAST_SEEN_ATTR_KEY, tick())
+
+					if not CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+						CollectionService:AddTag(inst, IN_FRUSTUM_TAG)
+					end
+					if isVisible then
+						if not CollectionService:HasTag(inst, VISIBLE_TAG) then
+							CollectionService:AddTag(inst, VISIBLE_TAG)
+						end
+						if CollectionService:HasTag(inst, OBSCURED_TAG) then
+							CollectionService:RemoveTag(inst, OBSCURED_TAG)
+						end
+						if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
+							CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
+						end
+					else
+						if not CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
+							CollectionService:AddTag(inst, INITIAL_OBSCURED_TAG)
+						end
+						if CollectionService:HasTag(inst, VISIBLE_TAG) then
+							CollectionService:RemoveTag(inst, VISIBLE_TAG)
+						end
+					end
+
 					if isVisible then
 						if noOccludeTag then
 							if not CollectionService:HasTag(inst, noOccludeTag) then
@@ -293,80 +198,27 @@ function Frustum:Occludecast(sampleCount: number, raycastParams: RaycastParams?,
 					distance -= (result.Position - origin).Magnitude
 					origin = result.Position
 				end
+				if DEBUG_CAST then
+					if result then
+						local vec = Draw.vector(origin, (result.Position - origin), Color3.new(1,0,0), nil, 0.5)
+						task.delay(1/60, function()
+							vec:Destroy()
+						end)
+					else
+						local vec = Draw.vector(origin, direction, Color3.new(0,0,1), nil, 0.5)
+						task.delay(1/60, function()
+							vec:Destroy()
+						end)
+					end
+				end
 				lastRaycastResult = result
-			until lastRaycastResult == nil or distance <= 0
+			until lastRaycastResult == nil or distance <= 0 or count >= 100
 
-			if #resultList > 0 then
-				local iV2 = Vector2.new(
-					1 - ((iX-0.5)/#xStudOffsets), 
-					(iY-0.5)/#yStudOffsets
-				)
-				out[iV2] = resultList
+			if count >= 100 then
+				error(`inf recursion possible: {iX}, {iY}`)
 			end
 		end
 	end
-
-	return out
-end
-
-function Frustum:Render(sampleCount: number?): Part
-	sampleCount = sampleCount or DEFAULT_SAMPLE_COUNT
-	assert(sampleCount)
-	local dotWidth = math.min(self.ViewportSize.X, self.ViewportSize.Y)/(sampleCount^0.5)
-	local renderResults = self:Occludecast(sampleCount)
-
-	local panel = Instance.new("Part")
-	panel.Name = `Rendering_{#TableUtil.keys(renderResults)}`
-	panel.Anchored = true
-	panel.CanCollide = false
-	panel.CanTouch = false
-	panel.CanQuery = false
-	panel.Locked = true
-	panel.Transparency = 1
-	panel.Size = Vector3.new(
-		(self.NearBottomLeft - self.NearBottomRight).Magnitude,
-		(self.NearTopRight - self.NearBottomRight).Magnitude,
-		0.01
-	)
-	panel.CFrame = self.CFrame * CFrame.new(0,0,self.NearPlaneZ) * CFrame.Angles(0,math.rad(180),0)
-
-	local surfaceGui = Instance.new("SurfaceGui")
-	surfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
-	surfaceGui.CanvasSize = self.ViewportSize
-
-	for kV2, occludeResultList in pairs(renderResults) do
-		if #occludeResultList > 0 then
-			local frame = Instance.new("Frame")
-			frame.BackgroundTransparency = 0.5
-			frame.Name = tostring(kV2)
-			frame.Size = UDim2.fromOffset(dotWidth, dotWidth)
-			frame.Position = UDim2.fromScale(
-				kV2.X,--0.5 - (0.5 - kV2.X), 
-				kV2.Y --0.5 - (0.5 - kV2.Y)
-			)
-			for i, v in ipairs(occludeResultList) do
-				local result = v.Result
-				local inst = result.Instance
-				if v.IsVisible then
-					if inst:IsA("BasePart") then
-						frame.BackgroundColor3 = inst.Color
-					elseif inst:IsA("Terrain") then
-						local mat = inst.Material
-						local color = Terrain:GetMaterialColor(mat)
-						frame.BackgroundColor3 = color
-					end
-				end
-			end			
-
-			frame.Parent = surfaceGui
-		end
-		
-	end
-
-	surfaceGui.Parent = panel
-	panel.Parent = workspace.CurrentCamera
-
-	return panel
 end
 
 function Frustum:Draw(): Folder
