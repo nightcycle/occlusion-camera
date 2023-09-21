@@ -17,7 +17,7 @@ local Frustum = require(_Package:WaitForChild("Frustum"))
 
 -- Types
 -- Constants
-local DEBUG_DRAW = false --_Package:GetFullName() == "ReplicatedStorage.Packages.package"
+local DEBUG_DRAW = false-- _Package:GetFullName() == "ReplicatedStorage.Packages.package"
 local IN_FRUSTUM_TAG = Config.Tag.InFrustum
 local OBSCURED_TAG = Config.Tag.Obscured
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
@@ -27,7 +27,6 @@ local PROCESS_LIMIT = 3
 -- Variables
 -- References
 -- Private Functions
-
 -- Class
 -- Types
 type Signal = Signal.Signal
@@ -124,6 +123,74 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 
 	local prevCF: CFrame?
 
+	local function onVisibleTag(inst: Instance)
+		assert(inst:IsA("BasePart"))
+		self.OnViewPart:Fire(inst)
+	end
+
+	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(VISIBLE_TAG):Connect(onVisibleTag))
+	for i, inst in ipairs(CollectionService:GetTagged(VISIBLE_TAG)) do
+		onVisibleTag(inst)
+	end
+
+	local function onInitialObscureTag(inst: Instance)
+		assert(inst:IsA("BasePart"))
+		if self.ObscureDelay > 0 then
+			task.wait(self.ObscureDelay)
+
+			if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) and self._IsAlive then
+				if not CollectionService:HasTag(inst, OBSCURED_TAG) then
+					CollectionService:AddTag(inst, OBSCURED_TAG)
+				end
+			end
+		else
+			if not CollectionService:HasTag(inst, OBSCURED_TAG) then
+				CollectionService:AddTag(inst, OBSCURED_TAG)
+			end
+		end
+	end
+
+	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(INITIAL_OBSCURED_TAG):Connect(onInitialObscureTag))
+	for i, inst in ipairs(CollectionService:GetTagged(INITIAL_OBSCURED_TAG)) do
+		onInitialObscureTag(inst)
+	end
+
+
+	local function onObscureTag(inst: Instance)
+		assert(inst:IsA("BasePart"))
+		self.OnObscurePart:Fire(inst)
+	end
+	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(OBSCURED_TAG):Connect(onObscureTag))
+	for i, inst in ipairs(CollectionService:GetTagged(OBSCURED_TAG)) do
+		onObscureTag(inst)
+	end
+
+	local function onFrustumTag(inst: Instance)
+		assert(inst:IsA("BasePart"))
+		self.OnPartEnterFrustum:Fire(inst)
+	end
+
+	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(IN_FRUSTUM_TAG):Connect(onFrustumTag))
+	for i, inst in ipairs(CollectionService:GetTagged(IN_FRUSTUM_TAG)) do
+		onFrustumTag(inst)
+	end
+
+	local function onRemoveFrustumTag(inst: Instance)
+		if not inst:IsDescendantOf(game) then return end
+		inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
+		if CollectionService:HasTag(inst, OBSCURED_TAG) then
+			CollectionService:RemoveTag(inst, OBSCURED_TAG)
+		end
+		if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
+			CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
+		end
+		if CollectionService:HasTag(inst, VISIBLE_TAG) then
+			CollectionService:RemoveTag(inst, VISIBLE_TAG)
+		end
+		self.OnPartExitFrustum:Fire(inst)
+	end
+	self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(onRemoveFrustumTag))
+
 	self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 		if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
 			prevCF = self.Instance:GetRenderCFrame()
@@ -142,12 +209,20 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			local a3 = tick()
 			self.Instance:SetAttribute("Draw", math.round(1000*(a3-a2)/(1/60)))
 
-			frustum:TagCast(
-				self.SampleCount, 
-				self.RaycastParams, 
-				self.WorldRoot, 
-				self.NoOccludeTag
-			)
+			-- frustum:TagCast(
+			-- 	self.SampleCount, 
+			-- 	self.RaycastParams, 
+			-- 	self.WorldRoot, 
+			-- 	self.NoOccludeTag
+			-- )
+
+			for i, inst in ipairs(self.RaycastParams.FilterDescendantsInstances) do
+				if inst:IsA("BasePart") then
+					local isInFrustum = frustum:GetIfBlockRendered(inst.CFrame, inst.Size)
+					inst.Color = if isInFrustum then Color3.new(1,0.5,0) else Color3.new(0,0.5,1)
+				end
+			end
+
 			local b = tick()
 			self.Instance:SetAttribute("Cast", math.round(1000*(b-a3)/(1/60)))
 
@@ -193,51 +268,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 		end
 	end))
 
-	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(VISIBLE_TAG):Connect(function(inst: Instance)
-		assert(inst:IsA("BasePart"))
-		self.OnViewPart:Fire(inst)
-	end))
 
-	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(INITIAL_OBSCURED_TAG):Connect(function(inst: Instance)
-		assert(inst:IsA("BasePart"))
-		if self.ObscureDelay > 0 then
-			task.wait(self.ObscureDelay)
-
-			if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) and self._IsAlive then
-				if not CollectionService:HasTag(inst, OBSCURED_TAG) then
-					CollectionService:AddTag(inst, OBSCURED_TAG)
-				end
-			end
-		else
-			if not CollectionService:HasTag(inst, OBSCURED_TAG) then
-				CollectionService:AddTag(inst, OBSCURED_TAG)
-			end
-		end
-	end))
-	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(OBSCURED_TAG):Connect(function(inst: Instance)
-		assert(inst:IsA("BasePart"))
-		self.OnObscurePart:Fire(inst)
-	end))
-
-	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(IN_FRUSTUM_TAG):Connect(function(inst: Instance)
-		assert(inst:IsA("BasePart"))
-		self.OnPartEnterFrustum:Fire(inst)
-	end))
-
-	self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(function(inst: Instance)
-		if not inst:IsDescendantOf(game) then return end
-		inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
-		if CollectionService:HasTag(inst, OBSCURED_TAG) then
-			CollectionService:RemoveTag(inst, OBSCURED_TAG)
-		end
-		if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
-			CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
-		end
-		if CollectionService:HasTag(inst, VISIBLE_TAG) then
-			CollectionService:RemoveTag(inst, VISIBLE_TAG)
-		end
-		self.OnPartExitFrustum:Fire(inst)
-	end))
 
 	return self
 end

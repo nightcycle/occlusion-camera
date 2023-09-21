@@ -15,6 +15,7 @@ local OBSCURED_TAG = Config.Tag.Obscured
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local VISIBLE_TAG = Config.Tag.Visible
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
+local USE_REAL_CAMERA = false
 -- Variables
 -- References
 local Map = workspace:WaitForChild("Map")
@@ -31,24 +32,32 @@ return function(frame: Frame)
 
 		local part = maid:GiveTask(Instance.new("Part"))
 		part.Name = "CameraHolder"
-		part.CFrame = CFrame.new(0,20,0)
+		part.CFrame = CFrame.new(-53, 20, 41) * CFrame.fromOrientation(0, math.rad(150), 0)
 		part.Size = Vector3.new(2, 1, 0.05)
 		part.Anchored = true
 		part.Parent = workspace
 
-		local camera = maid:GiveTask(Instance.new("Camera"))
-		camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
-		camera:SetAttribute("NearPlaneZ", -5)
-		camera.FieldOfView = 55
-		camera.Parent = part
+		local camera: Camera
+		if USE_REAL_CAMERA then
+			camera = workspace.CurrentCamera
+		else
+			camera = maid:GiveTask(Instance.new("Camera"))
+			camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
+			camera.FieldOfView = 55
+			camera.Parent = part
+		end		
+
 
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
 		oCam.OnlyUpdateOnCameraMove = false
+		oCam.MaxRenderDistance = 512
 		oCam.RaycastParams.FilterDescendantsInstances = Map:GetChildren()--}
 		oCam.RaycastParams.FilterType = Enum.RaycastFilterType.Include
 
 		maid:GiveTask(RunService.RenderStepped:Connect(function()
-			camera.CFrame = part.CFrame
+			if camera ~= workspace.CurrentCamera then
+				camera.CFrame = part.CFrame
+			end
 		end))
 
 		maid:GiveTask(oCam.OnPartEnterFrustum:Connect(function(part: BasePart)
@@ -95,6 +104,11 @@ return function(frame: Frame)
 			CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
 			CollectionService:RemoveTag(inst, VISIBLE_TAG)
 			inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
+		end
+		for i, inst in ipairs(Map:GetChildren()) do
+			if inst:IsA("BasePart") then
+				inst.Color = Color3.fromHSV(0,0,0.8)
+			end
 		end
 		for k, v in pairs(highlights) do
 			highlights[k] = nil
