@@ -223,56 +223,57 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					speedTest[inst.Name] = speedTest[inst.Name] or 0
 					census[inst.Name] = census[inst.Name] or 0
 					local start = tick()
-					if inst.Name == "Block" then
-						isInFrustum = frustum:GetIfBlockRendered(inst.CFrame, inst.Size)
-					elseif inst.Name == "Ray" then
-						isInFrustum = frustum:GetIfRayRendered(
-							Ray.new(
-								(inst.CFrame * CFrame.new(-inst.Size.X/2,0,0)).Position,
-								inst.CFrame.RightVector * inst.Size.X
-							)
-						)
-					elseif inst.Name == "Sphere" then
-						isInFrustum = frustum:GetIfSphereRendered(
-							inst.Position,
-							math.min(inst.Size.X, inst.Size.Y, inst.Size.Z)/2
-						)
-					elseif inst.Name == "Point" then
-						isInFrustum = frustum:GetIfPointRendered(
-							inst.Position
-						)
-					elseif inst.Name == "Plane" then
-						isInFrustum = frustum:GetIfPlaneRendered(
-							inst.Position,
-							inst.CFrame.UpVector
-						)
-					elseif inst.Name == "SquareSurface" then
-						local xVec = inst.CFrame.RightVector * inst.Size.X
-						local yVec = inst.CFrame.LookVector * inst.Size.Z
+					isInFrustum = frustum:GetIfPartRendered(inst)
+					-- if inst.Name == "Block" then
+					-- 	isInFrustum = frustum:GetIfBlockRendered(inst.CFrame, inst.Size)
+					-- elseif inst.Name == "Ray" then
+					-- 	isInFrustum = frustum:GetIfRayRendered(
+					-- 		Ray.new(
+					-- 			(inst.CFrame * CFrame.new(-inst.Size.X/2,0,0)).Position,
+					-- 			inst.CFrame.RightVector * inst.Size.X
+					-- 		)
+					-- 	)
+					-- elseif inst.Name == "Sphere" then
+					-- 	isInFrustum = frustum:GetIfSphereRendered(
+					-- 		inst.Position,
+					-- 		math.min(inst.Size.X, inst.Size.Y, inst.Size.Z)/2
+					-- 	)
+					-- elseif inst.Name == "Point" then
+					-- 	isInFrustum = frustum:GetIfPointRendered(
+					-- 		inst.Position
+					-- 	)
+					-- elseif inst.Name == "Plane" then
+					-- 	isInFrustum = frustum:GetIfPlaneRendered(
+					-- 		inst.Position,
+					-- 		inst.CFrame.UpVector
+					-- 	)
+					-- elseif inst.Name == "SquareSurface" then
+					-- 	local xVec = inst.CFrame.RightVector * inst.Size.X
+					-- 	local yVec = inst.CFrame.LookVector * inst.Size.Z
 
-						local position = inst.CFrame.Position
+					-- 	local position = inst.CFrame.Position
 			
-						local c1 = position + (xVec/2) + (yVec/2)
-						local c2 = position - (xVec/2) + (yVec/2)	
-						local c3 = position + (xVec/2) - (yVec/2)
-						local c4 = position - (xVec/2) - (yVec/2)
+					-- 	local c1 = position + (xVec/2) + (yVec/2)
+					-- 	local c2 = position - (xVec/2) + (yVec/2)	
+					-- 	local c3 = position + (xVec/2) - (yVec/2)
+					-- 	local c4 = position - (xVec/2) - (yVec/2)
 
-						isInFrustum = frustum:GetIfRectangleRendered(
-							c1, c2, c3, c4
-						)
-					elseif inst.Name == "TriangleSurface" then
-						local position = inst.CFrame.Position
-						local xVec = inst.CFrame.LookVector * inst.Size.Z
-						local yVec = inst.CFrame.UpVector * inst.Size.Y
+					-- 	isInFrustum = frustum:GetIfRectangleRendered(
+					-- 		c1, c2, c3, c4
+					-- 	)
+					-- elseif inst.Name == "TriangleSurface" then
+					-- 	local position = inst.CFrame.Position
+					-- 	local xVec = inst.CFrame.LookVector * inst.Size.Z
+					-- 	local yVec = inst.CFrame.UpVector * inst.Size.Y
 
-						local c1 = position - (xVec/2) - (yVec/2)
-						local c2 = position - (xVec/2) + (yVec/2)	
-						local c3 = position + (xVec/2) - (yVec/2)
+					-- 	local c1 = position - (xVec/2) - (yVec/2)
+					-- 	local c2 = position - (xVec/2) + (yVec/2)	
+					-- 	local c3 = position + (xVec/2) - (yVec/2)
 
-						isInFrustum = frustum:GetIfTriangleRendered(
-							c1, c2, c3
-						)
-					end
+					-- 	isInFrustum = frustum:GetIfTriangleRendered(
+					-- 		c1, c2, c3
+					-- 	)
+					-- end
 					speedTest[inst.Name] += 100*(tick() - start)
 					census[inst.Name] += 1
 					if isInFrustum == nil then

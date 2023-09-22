@@ -53,24 +53,16 @@ export type Frustum = {
 	NearBottomRight: Vector3,
 	Rays: {[number]: Ray},
 	Planes: {[string]: Plane},
-	-- {
-	-- 	Near: Plane,
-	-- 	Far: Plane,
-	-- 	Top: Plane,
-	-- 	Bottom: Plane,
-	-- 	Left: Plane,
-	-- 	Right: Plane,
-	-- },
 	_GetViewportPosition: (self: Frustum, point: Vector3) -> (Vector3, boolean),
 	_GetIfPointIsCloseEnough: (self: Frustum, point: Vector3) -> boolean,
 	GetIfPointRendered: (self: Frustum, point: Vector3) -> boolean,
 	GetIfRectangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> boolean,
 	GetIfTriangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3) -> boolean,
-
 	GetIfRayRendered: (self: Frustum, ray: Ray) -> boolean,
 	GetIfSphereRendered: (self: Frustum, origin: Vector3, radius: number) -> boolean,
 	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3) -> boolean,
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
+	GetIfPartRendered: (self: Frustum, part: BasePart) -> boolean,
 	Draw: (self: Frustum) -> Folder,
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
@@ -81,6 +73,7 @@ local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local OBSCURED_TAG = Config.Tag.Obscured
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
 local USE_CUSTOM_VIEWPORT_MATH = true
+local RENDER_PARTS_AS_SPHERE = true
 
 -- Variables
 -- References
@@ -322,10 +315,8 @@ function Frustum:GetIfPlaneRendered(origin: Vector3, normal: Vector3): boolean
 end
 
 function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean	
-	local maxDim = math.max(size.X, size.Y, size.Z)
-	local radius = Vector3.new(maxDim, maxDim, maxDim).Magnitude / 2
 
-	if self:GetIfSphereRendered(cf.Position, radius) then
+	if self:GetIfSphereRendered(cf.Position, size.Magnitude/2) then
 
 		local lVec = self.CFrame.LookVector
 
@@ -370,6 +361,22 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 	end
 
 	return false
+end
+
+function Frustum:GetIfPartRendered(part: BasePart)
+	if RENDER_PARTS_AS_SPHERE then
+		return self:GetIfSphereRendered(part.Position, part.Size.Magnitude/2)
+	else
+		if part:IsA("Part") then
+			if part.Shape == Enum.PartType.Ball then
+				return self:GetIfSphereRendered(part.Position, part.Size.Magnitude/2)
+			else
+				return self:GetIfBlockRendered(part.CFrame, part.Size)
+			end
+		else
+			return self:GetIfBlockRendered(part.CFrame, part.Size)
+		end
+	end
 end
 
 function Frustum:Draw(): Folder
