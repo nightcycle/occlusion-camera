@@ -191,10 +191,16 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	end
 	self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(onRemoveFrustumTag))
 
+	local total = {}
+	local steps = 0
+
 	self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 		if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
 			prevCF = self.Instance:GetRenderCFrame()
-	
+			steps += 1
+			task.delay(1, function()
+				steps -= 1
+			end)
 			-- local a = tick()
 
 			local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
@@ -284,7 +290,15 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			-- local b = tick()
 			-- self.Instance:SetAttribute("Cast", math.round(1000*(b-a3)/(1/60)))
 			for k, v in pairs(speedTest) do
-				self.Instance:SetAttribute(k, math.round((1/120)/(v / census[k])))
+				local value = (1/120)/(v / census[k])
+				total[k] = total[k] or 0
+				total[k] += value
+				if total[k] then
+					self.Instance:SetAttribute(k, math.round(total[k]/steps))
+				end
+				task.delay(1, function()
+					total[k] -= value
+				end)
 			end
 
 			-- local tagged = CollectionService:GetTagged(IN_FRUSTUM_TAG)

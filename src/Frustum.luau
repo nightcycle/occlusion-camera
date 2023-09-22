@@ -80,7 +80,7 @@ local VISIBLE_TAG = Config.Tag.Visible
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local OBSCURED_TAG = Config.Tag.Obscured
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
-local USE_CUSTOM_VIEWPORT_MATH = false
+local USE_CUSTOM_VIEWPORT_MATH = true
 
 -- Variables
 -- References
@@ -268,7 +268,7 @@ function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean
 end
 
 function Frustum:GetIfRectangleRendered(a: Vector3, b: Vector3, c: Vector3, d: Vector3): boolean
-	local pos = (a:Lerp(b, 0.5)):Lerp((c:Lerp(b, 0.5)), 0.5)
+	local pos = (a:Lerp(b, 0.5)):Lerp((c:Lerp(d, 0.5)), 0.5)
 	local radius = math.max((pos-a).Magnitude, (pos-b).Magnitude, (pos-c).Magnitude, (pos-d).Magnitude)
 	if not self:GetIfSphereRendered(pos, radius) then return false end
 	if self:GetIfPointRendered(a) then return true end
@@ -287,6 +287,10 @@ function Frustum:GetIfRectangleRendered(a: Vector3, b: Vector3, c: Vector3, d: V
 end
 
 function Frustum:GetIfTriangleRendered(a: Vector3, b: Vector3, c: Vector3): boolean
+	local pos = (a:Lerp(b, 0.5)):Lerp(c, 1/3)
+	local radius = math.max((pos-a).Magnitude, (pos-b).Magnitude, (pos-c).Magnitude)
+	if not self:GetIfSphereRendered(pos, radius) then return false end
+
 	if self:GetIfPointRendered(a) then return true end
 	if self:GetIfPointRendered(b) then return true end
 	if self:GetIfPointRendered(c) then return true end
