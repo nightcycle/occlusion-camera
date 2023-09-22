@@ -8,7 +8,7 @@ local CollectionService = game:GetService("CollectionService")
 -- Packages
 local Maid = require(_Packages:WaitForChild("Maid"))
 local Signal = require(_Packages:WaitForChild("Signal"))
-local TableUtil = require(_Packages:WaitForChild("TableUtil"))
+local Draw = require(_Packages:WaitForChild("Draw"))
 
 
 -- Modules
@@ -17,7 +17,7 @@ local Frustum = require(_Package:WaitForChild("Frustum"))
 
 -- Types
 -- Constants
-local DEBUG_DRAW = false-- _Package:GetFullName() == "ReplicatedStorage.Packages.package"
+local DEBUG_DRAW = false --_Package:GetFullName() == "ReplicatedStorage.Packages.package"
 local IN_FRUSTUM_TAG = Config.Tag.InFrustum
 local OBSCURED_TAG = Config.Tag.Obscured
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
@@ -195,76 +195,137 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 		if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
 			prevCF = self.Instance:GetRenderCFrame()
 	
-			local a = tick()
+			-- local a = tick()
 
 			local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
 
-			local a2 = tick()
-			self.Instance:SetAttribute("Construction", math.round(1000*(a2-a)/(1/60)))
+			-- local a2 = tick()
+			-- self.Instance:SetAttribute("Construction", math.round(1000*(a2-a)/(1/60)))
 
 			if DEBUG_DRAW then
 				self._Maid._frustumDraw = frustum:Draw()
 			end
 
-			local a3 = tick()
-			self.Instance:SetAttribute("Draw", math.round(1000*(a3-a2)/(1/60)))
+			-- local a3 = tick()
+			-- self.Instance:SetAttribute("Draw", math.round(1000*(a3-a2)/(1/60)))
 
-			-- frustum:TagCast(
-			-- 	self.SampleCount, 
-			-- 	self.RaycastParams, 
-			-- 	self.WorldRoot, 
-			-- 	self.NoOccludeTag
-			-- )
-
+			local speedTest: {[string]: number} = {}
+			local census: {[string]: number} = {}
 			for i, inst in ipairs(self.RaycastParams.FilterDescendantsInstances) do
 				if inst:IsA("BasePart") then
-					local isInFrustum = frustum:GetIfBlockRendered(inst.CFrame, inst.Size)
-					inst.Color = if isInFrustum then Color3.new(1,0.5,0) else Color3.new(0,0.5,1)
+					local isInFrustum: boolean
+					speedTest[inst.Name] = speedTest[inst.Name] or 0
+					census[inst.Name] = census[inst.Name] or 0
+					local start = tick()
+					if inst.Name == "Block" then
+						isInFrustum = frustum:GetIfBlockRendered(inst.CFrame, inst.Size)
+					elseif inst.Name == "Ray" then
+						isInFrustum = frustum:GetIfRayRendered(
+							Ray.new(
+								(inst.CFrame * CFrame.new(-inst.Size.X/2,0,0)).Position,
+								inst.CFrame.RightVector * inst.Size.X
+							)
+						)
+					elseif inst.Name == "Sphere" then
+						isInFrustum = frustum:GetIfSphereRendered(
+							inst.Position,
+							math.min(inst.Size.X, inst.Size.Y, inst.Size.Z)/2
+						)
+					elseif inst.Name == "Point" then
+						isInFrustum = frustum:GetIfPointRendered(
+							inst.Position
+						)
+					elseif inst.Name == "Plane" then
+						isInFrustum = frustum:GetIfPlaneRendered(
+							inst.Position,
+							inst.CFrame.UpVector
+						)
+					elseif inst.Name == "SquareSurface" then
+						local xVec = inst.CFrame.RightVector * inst.Size.X
+						local yVec = inst.CFrame.LookVector * inst.Size.Z
+
+						local position = inst.CFrame.Position
+			
+						local c1 = position + (xVec/2) + (yVec/2)
+						local c2 = position - (xVec/2) + (yVec/2)	
+						local c3 = position + (xVec/2) - (yVec/2)
+						local c4 = position - (xVec/2) - (yVec/2)
+
+						isInFrustum = frustum:GetIfRectangleRendered(
+							c1, c2, c3, c4
+						)
+					elseif inst.Name == "TriangleSurface" then
+						local position = inst.CFrame.Position
+						local xVec = inst.CFrame.LookVector * inst.Size.Z
+						local yVec = inst.CFrame.UpVector * inst.Size.Y
+
+						local c1 = position - (xVec/2) - (yVec/2)
+						local c2 = position - (xVec/2) + (yVec/2)	
+						local c3 = position + (xVec/2) - (yVec/2)
+
+						isInFrustum = frustum:GetIfTriangleRendered(
+							c1, c2, c3
+						)
+					end
+					speedTest[inst.Name] += 100*(tick() - start)
+					census[inst.Name] += 1
+					if isInFrustum == nil then
+						inst.Color = Color3.new(1,0,0)
+					else
+						inst.Color = if isInFrustum then Color3.new(1,0.5,0) else Color3.new(0,0.5,1)
+					end
+					local decal = inst:FindFirstChildOfClass("Decal")
+					if decal then
+						decal.Color3 = inst.Color
+					end
 				end
 			end
 
-			local b = tick()
-			self.Instance:SetAttribute("Cast", math.round(1000*(b-a3)/(1/60)))
-
-			local tagged = CollectionService:GetTagged(IN_FRUSTUM_TAG)
-			table.sort(tagged, function(a: Instance, b: Instance)
-				local aTick = a:GetAttribute(LAST_SEEN_ATTR_KEY)
-				local bTick = b:GetAttribute(LAST_SEEN_ATTR_KEY)
-				if bTick and aTick then
-					return aTick < bTick
-				elseif bTick then
-					return false
-				elseif aTick then
-					return true
-				else
-					return false
-				end
-			end)
-
-			local c = tick()
-			self.Instance:SetAttribute("Sort", math.round(1000*(c-b)/(1/60)))
-
-
-			local t = tick()
-			for i, inst in ipairs(tagged) do
-				if i > PROCESS_LIMIT then
-					break
-				end
-				local lastSeen = inst:GetAttribute(LAST_SEEN_ATTR_KEY)
-				if lastSeen then
-					if t-lastSeen > self.ObscureDelay then
-						if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
-							CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
-						end
-					end
-				else
-					if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
-						CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
-					end
-				end
+			-- local b = tick()
+			-- self.Instance:SetAttribute("Cast", math.round(1000*(b-a3)/(1/60)))
+			for k, v in pairs(speedTest) do
+				self.Instance:SetAttribute(k, math.round((1/120)/(v / census[k])))
 			end
-			local d = tick()
-			self.Instance:SetAttribute("Filter", math.round(1000*(d-c)/(1/60)))
+
+			-- local tagged = CollectionService:GetTagged(IN_FRUSTUM_TAG)
+			-- table.sort(tagged, function(a: Instance, b: Instance)
+			-- 	local aTick = a:GetAttribute(LAST_SEEN_ATTR_KEY)
+			-- 	local bTick = b:GetAttribute(LAST_SEEN_ATTR_KEY)
+			-- 	if bTick and aTick then
+			-- 		return aTick < bTick
+			-- 	elseif bTick then
+			-- 		return false
+			-- 	elseif aTick then
+			-- 		return true
+			-- 	else
+			-- 		return false
+			-- 	end
+			-- end)
+
+			-- local c = tick()
+			-- self.Instance:SetAttribute("Sort", math.round(1000*(c-b)/(1/60)))
+
+
+			-- local t = tick()
+			-- for i, inst in ipairs(tagged) do
+			-- 	if i > PROCESS_LIMIT then
+			-- 		break
+			-- 	end
+			-- 	local lastSeen = inst:GetAttribute(LAST_SEEN_ATTR_KEY)
+			-- 	if lastSeen then
+			-- 		if t-lastSeen > self.ObscureDelay then
+			-- 			if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+			-- 				CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+			-- 			end
+			-- 		end
+			-- 	else
+			-- 		if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+			-- 			CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+			-- 		end
+			-- 	end
+			-- end
+			-- local d = tick()
+			-- self.Instance:SetAttribute("Filter", math.round(1000*(d-c)/(1/60)))
 		end
 	end))
 

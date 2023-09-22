@@ -7,7 +7,6 @@ local _Packages = _Package.Parent
 local CollectionService = game:GetService("CollectionService")
 
 -- Packages
-local GeometryUtil = require(_Packages:WaitForChild("GeometryUtil"))
 local Draw = require(_Packages:WaitForChild("Draw"))
 
 -- Modules
@@ -16,6 +15,7 @@ local Config = require(_Package:WaitForChild("Config"))
 -- Types
 export type Plane = {
 	Normal: Vector3,
+	Origin: Vector3,
 	Dot: number,
 }
 export type OcclusionResult = {
@@ -38,6 +38,7 @@ export type Frustum = {
 	AspectRatio: number,
 	NearPlaneZ: number,
 	HalfFieldOfView: number,
+	HalfHorizontalFieldOfView: number,
 	HalfFarPlaneHeight: number,
 	HalfFarPlaneWidth: number,
 	HalfNearPlaneHeight: number,
@@ -50,22 +51,26 @@ export type Frustum = {
 	NearTopRight: Vector3,
 	NearBottomLeft: Vector3,
 	NearBottomRight: Vector3,
-	Planes: {
-		Near: Plane,
-		Far: Plane,
-		Top: Plane,
-		Bottom: Plane,
-		Left: Plane,
-		Right: Plane,
-	},
-	TagCast: (self: Frustum, sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?) -> (),
+	Rays: {[number]: Ray},
+	Planes: {[string]: Plane},
+	-- {
+	-- 	Near: Plane,
+	-- 	Far: Plane,
+	-- 	Top: Plane,
+	-- 	Bottom: Plane,
+	-- 	Left: Plane,
+	-- 	Right: Plane,
+	-- },
+	_GetViewportPosition: (self: Frustum, point: Vector3) -> (Vector3, boolean),
 	_GetIfPointIsCloseEnough: (self: Frustum, point: Vector3) -> boolean,
 	GetIfPointRendered: (self: Frustum, point: Vector3) -> boolean,
-	GetIfRayRendered: (self: Frustum, ray: Ray, cornersAlreadyChecked: boolean?) -> boolean,
+	GetIfRectangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> boolean,
+	GetIfTriangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3) -> boolean,
+
+	GetIfRayRendered: (self: Frustum, ray: Ray) -> boolean,
 	GetIfSphereRendered: (self: Frustum, origin: Vector3, radius: number) -> boolean,
 	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3) -> boolean,
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
-	GetNearPlaneRenderCells: (self: Frustum, cellCount: number) -> {[number]: Vector2},
 	Draw: (self: Frustum) -> Folder,
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
@@ -75,6 +80,7 @@ local VISIBLE_TAG = Config.Tag.Visible
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local OBSCURED_TAG = Config.Tag.Obscured
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
+local USE_CUSTOM_VIEWPORT_MATH = false
 
 -- Variables
 -- References
@@ -89,6 +95,7 @@ function newPlane(
 
 	local plane = {
 		Normal = normal,
+		Origin = p0,
 		Dot = -normal:Dot(p0),
 	}
 
@@ -97,230 +104,154 @@ function newPlane(
 	return plane
 end
 
-function getIfInFrontOfCamera(camCF: CFrame, pos: Vector3)
-	return ((pos - camCF.Position).Unit):Dot(camCF.LookVector) > 0
-end
-
--- https://www.geeksforgeeks.org/program-for-point-of-intersection-of-two-lines/
-function getLineIntersection(aOri: Vector2, aDest: Vector2, bOri: Vector2, bDest: Vector2): Vector2?
-	local a1 = aDest.Y - aOri.Y
-	local b1 = aOri.X - aDest.X
-	local c1 = a1 * aOri.X + b1 * aOri.Y
-
-	local a2 = bDest.Y - bOri.Y
-	local b2 = bOri.X - bDest.X
-	local c2 = a1 * bOri.X + b1 * bOri.Y
-
-	local determinant = a1*b2 - a2*b1
-	if determinant == 0 then
-		return nil
-	else
-		local x = (b2*c1 - b1*c2)/determinant
-		local y = (a1*c2 - a2*c1)/determinant
-		return Vector2.new(x,y)
-	end
-end
-
-function getCellVector(camCF: CFrame, nearPlaneDistance: number, nearPlanePosition: Vector2)
-	local tiltAngle = math.atan2(nearPlanePosition.Y, math.abs(nearPlaneDistance))
-	local panAngle = math.atan2(nearPlanePosition.X, math.abs(nearPlaneDistance))
-
-	return (camCF * CFrame.Angles(0, panAngle, 0) * CFrame.Angles(tiltAngle, 0, 0)).LookVector.Unit
-end
-
-function getCellRenderDistance(camCF: CFrame, lookVector: Vector3, farPlaneDistance: number): number
-	local angle = GeometryUtil.getAngleBetweenTwoNormals(lookVector, camCF.LookVector)
-	return farPlaneDistance/math.cos(angle)
-end
-
-function recursiveCellCast(
-	camCF: CFrame, 
-	lookVector: Vector3, 
-	nearPlaneDistance: number, 
-	cellRenderDistance: number,
-	raycastParams: RaycastParams, 
-	worldRoot: WorldRoot,
-	noOccludeTag: string?
-): {[number]: OcclusionResult}
-	local lastRaycastResult: RaycastResult?
-	local origin = camCF.Position + lookVector * math.abs(nearPlaneDistance)
-	local isVisible = true
-
-	local distance = cellRenderDistance
-	local count = 0
-	local out: {[number]: OcclusionResult} = {}
-	repeat
-		count += 1
-		lastRaycastResult = nil
-		local direction = distance * lookVector
-		local result = worldRoot:Raycast(origin, direction, raycastParams)
-		if result then
-			
-			table.insert(out, {
-				IsVisible = isVisible,
-				Result = result,
-			})
-
-			if isVisible then
-				if noOccludeTag then
-					if not CollectionService:HasTag(result.Instance, noOccludeTag) then
-						isVisible = false
-					end
-				else
-					isVisible = false
-				end
-			end
-			distance -= (result.Position - origin).Magnitude
-			origin = result.Position
+ -- https://stackoverflow.com/questions/5666222/3d-line-plane-intersection
+function getPlaneIntersection(planeOrigin: Vector3, planeNormal: Vector3, rayOrigin: Vector3, rayDirection: Vector3): Vector3?
+	local dot = planeNormal:Dot(rayDirection)
+	if math.abs(dot) > 1e-6 then
+		-- The factor of the point between rayOrigin -> rayLimit (0 - 1)
+		local w = rayOrigin - planeOrigin
+		-- if 'fac' is between (0 - 1) the point intersects with the segment.
+		-- Otherwise:
+		-- < 0.0: behind rayOrigin.
+		-- > 1.0: infront of rayLimit.
+		local fac = -(planeNormal:Dot(w)) / dot
+		if fac >= 0 and fac <= 1 then
+			rayDirection = rayDirection * fac
+			return rayOrigin + rayDirection
 		end
-		lastRaycastResult = result
-	until lastRaycastResult == nil or distance <= 0 or count >= 100
-
-	if count >= 100 then
-		error(`inf recursion possible`)
 	end
-
-	return out
+	return nil
 end
 
-function getRenderedCubeSurfaces(camCF: CFrame, cf: CFrame, size: Vector3): {[number]: Surface}
-	local renderedSurfaces: {[number]: Surface} = {}
-
-	do
-		local normal = cf.RightVector
-		local yVec = cf.UpVector * size.Y
-		local xVec = -cf.LookVector * size.Z
-
-		if normal:Dot(camCF.LookVector) > 0 then
-			normal *= -1
-		end
-
-		local position = cf.Position + normal * size.X / 2
-
-		local surface: Surface = {
-			Normal = normal,
-			Position = position,
-			Corners = {
-				position + (yVec/2) + (xVec/2),
-				position - (yVec/2) + (xVec/2),
-				position + (yVec/2) - (xVec/2),
-				position - (yVec/2) - (xVec/2),
-			}
-		}
-
-		table.insert(renderedSurfaces, surface)
+function getRectangleIntersection(rayOrigin: Vector3, rayDirection: Vector3, a: Vector3, b: Vector3, c: Vector3, d: Vector3): Vector3?
+	local planeNormal = ((b - a).Unit):Cross((c - a).Unit)
+	if planeNormal:Dot(rayDirection.Unit) > 0 then
+		planeNormal *= -1
 	end
 
-	do
-		local normal = cf.UpVector
-		local yVec = -cf.LookVector * size.Z
-		local xVec = cf.RightVector * size.X
-
-		if normal:Dot(camCF.LookVector) > 0 then
-			normal *= -1
+	local intersction = getPlaneIntersection(
+		a,
+		planeNormal,
+		rayOrigin,
+		rayDirection
+	)
+	if intersction then
+		local ab = (b - a):Dot(intersction - a)
+		local ba = (a - b):Dot(intersction - b)
+		local bc = (c - b):Dot(intersction - b)
+		local cb = (b - c):Dot(intersction - c)
+		local cd = (d - c):Dot(intersction - c)
+		local dc = (c - d):Dot(intersction - d)
+		local da = (a - d):Dot(intersction - d)
+		local ad = (d - a):Dot(intersction - a)
+	
+		if ab >= 0 and ba >= 0 and bc >= 0 and cb >= 0 and cd >= 0 and dc >= 0 and da >= 0 and ad >= 0 then
+			return intersction
 		end
-		
-		local position = cf.Position + normal * size.Y / 2
-
-		local surface: Surface = {
-			Normal = normal,
-			Position = position,
-			Corners = {
-				position + (yVec/2) + (xVec/2),
-				position - (yVec/2) + (xVec/2),
-				position + (yVec/2) - (xVec/2),
-				position - (yVec/2) - (xVec/2),
-			}
-		}
-
-		table.insert(renderedSurfaces, surface)
 	end
-
-	do
-		local normal = cf.LookVector
-		local yVec = cf.UpVector * size.Y
-		local xVec = cf.RightVector * size.X
-
-		if normal:Dot(camCF.LookVector) > 0 then
-			normal *= -1
-		end
-		
-		local position = cf.Position + normal * size.Z / 2
-
-		local surface: Surface = {
-			Normal = normal,
-			Position = position,
-			Corners = {
-				position + (yVec/2) + (xVec/2),
-				position - (yVec/2) + (xVec/2),
-				position + (yVec/2) - (xVec/2),
-				position - (yVec/2) - (xVec/2),
-			}
-		}
-
-		table.insert(renderedSurfaces, surface)
-	end
-
-	return renderedSurfaces
+	return nil
 end
 
+function getTriangleIntersection(rayOrigin: Vector3, rayDirection: Vector3, a: Vector3, b: Vector3, c: Vector3): Vector3?
+	local planeNormal = ((b - a).Unit):Cross((c - a).Unit)
+	if planeNormal:Dot(rayDirection.Unit) > 0 then
+		planeNormal *= -1
+	end
+
+	local intersction = getPlaneIntersection(
+		a,
+		planeNormal,
+		rayOrigin,
+		rayDirection
+	)
+
+
+	if intersction then
+		local function getTriangleArea(ab: number, bc: number, ca: number)
+			local s = (ab+bc+ca)/2
+			return (s*(s-ab)*(s-bc)*(s-ca))^0.5
+		end
+	
+		local ab = (a-b).Magnitude
+		local bc = (b-c).Magnitude
+		local ca = (c-a).Magnitude
+
+		local pa = (intersction-a).Magnitude
+		local pb = (intersction-b).Magnitude
+		local pc = (intersction-c).Magnitude
+
+		local pab = getTriangleArea(ab, pa, pb)
+		local pbc = getTriangleArea(bc, pc, pb)
+		local pca = getTriangleArea(ca, pc, pa)
+		local full = getTriangleArea(ab, bc, ca)
+		if math.abs(full - (pab+pbc+pca)) < full * 0.001 then
+			return intersction
+		end
+	end
+	return nil
+end
 -- Class
 local Frustum = {} :: Frustum
 Frustum.__index = Frustum
 
+function Frustum:_GetViewportPosition(point: Vector3): (Vector3, boolean)
+	if USE_CUSTOM_VIEWPORT_MATH then
+		local offset = self.CFrame:PointToObjectSpace(point)
+		local xAngle = math.atan2(offset.X, offset.Z)
+		local yAngle = math.atan2(offset.Y, offset.Z)
+	
+		local xOffset = (math.tan(xAngle) * self.NearPlaneZ)
+		local yOffset = (math.tan(yAngle) * self.NearPlaneZ)
+	
+		local xAlpha = 0.5 * (xOffset / self.HalfNearPlaneWidth) + 0.5
+		local yAlpha = 1 - (0.5 * (yOffset / self.HalfNearPlaneHeight) + 0.5)
+	
+		local screenPosition = self.ViewportSize * Vector2.new(xAlpha, yAlpha)
+		screenPosition = Vector2.new(math.round(screenPosition.X), math.round(screenPosition.Y))
+		local isVisible = math.sign(offset.Z) == -1 and (screenPosition.X >= 0 and screenPosition.X <= self.ViewportSize.X) and (screenPosition.Y >= 0 and screenPosition.Y <= self.ViewportSize.Y)
+	
+		return Vector3.new(screenPosition.X, screenPosition.Y, math.sign(offset.Z)), isVisible
+	else
+		return self.Camera:WorldToViewportPoint(point)
+	end
+end
 
 function Frustum:_GetIfPointIsCloseEnough(point: Vector3): boolean
-	local ray = self.Camera:ViewportPointToRay(point.X, point.Y)
-	local angle = GeometryUtil.getAngleBetweenTwoNormals(ray.Direction.Unit, self.CFrame.LookVector)
-	local maxDist = self.FarPlaneDistance/math.cos(angle) --near plane is already covered by ViewportPointToRay
-	return maxDist >= (point - self.CFrame.Position).Magnitude
+	local offset = self.CFrame:PointToObjectSpace(point)
+	return offset.Z <= self.FarPlaneDistance
 end
 
 function Frustum:GetIfPointRendered(point: Vector3): boolean
-	local _vPos: Vector3, isVisible: boolean = self.Camera:WorldToViewportPoint(point)
-	return isVisible and self:_GetIfPointIsCloseEnough(point)
+	return self:GetIfSphereRendered(point, 0)
 end
 
+function Frustum:GetIfRayRendered(ray: Ray): boolean
+	if not self:GetIfSphereRendered(ray.Origin + ray.Direction/2, ray.Direction.Magnitude/2) then return false end
 
-function Frustum:GetIfRayRendered(ray: Ray, cornersAlreadyChecked: boolean?): boolean
-
-	local originScreenPos: Vector3, originIsVisible: boolean = self.Camera:WorldToViewportPoint(ray.Origin)
-	if cornersAlreadyChecked ~= true then
-		if originIsVisible and self:_GetIfPointIsCloseEnough(originScreenPos) then return true end
+	if self:GetIfPointRendered(ray.Origin) then
+		return true
 	end
 
-	local destWorldPos: Vector3 = ray.Origin + ray.Direction
-
-	local destScreenPos: Vector3, destIsVisible: boolean = self.Camera:WorldToViewportPoint(destWorldPos)
-	if cornersAlreadyChecked ~= true then
-		if destIsVisible and self:_GetIfPointIsCloseEnough(destScreenPos) then return true end
+	if self:GetIfPointRendered(ray.Origin + ray.Direction) then
+		return true
 	end
 
-	if not getIfInFrontOfCamera(self.CFrame, ray.Origin) and not getIfInFrontOfCamera(self.CFrame, destWorldPos) then
-		return false
-	end
+	for _, plane in pairs(self.Planes) do
+		local intersection = getPlaneIntersection(
+			plane.Origin,
+			plane.Normal,
+			ray.Origin, 
+			ray.Direction
+		)
 
-	
-	destScreenPos *= Vector3.new(1,1,0)
-	originScreenPos *= Vector3.new(1,1,0)
-
-	local dSP2: Vector2 = Vector2.new(destScreenPos.X, destScreenPos.Y)
-	local oSP2: Vector2 = Vector2.new(originScreenPos.X, originScreenPos.Y)
-
-	for i, vec in ipairs({
-		{Vector2.new(0,0), Vector2.new(0,self.Camera.ViewportSize.Y)},
-		{Vector2.new(0,0), Vector2.new(self.Camera.ViewportSize.X,0)},
-		{Vector2.new(self.Camera.ViewportSize.X,0), Vector2.new(0,self.Camera.ViewportSize.Y)},
-		{Vector2.new(0,self.Camera.ViewportSize.Y), Vector2.new(self.Camera.ViewportSize.X,0)},
-	}) do
-		local borderOrigin: Vector2 = vec[1]
-		local borderDirection: Vector2 = vec[2]
-		
-		local intersection = getLineIntersection(oSP2, dSP2, borderOrigin, borderOrigin+borderDirection)
 		if intersection then
-			return true
+			local _screenPos, isVisible = self:_GetViewportPosition(intersection)
+			if isVisible then
+				return true
+			end
 		end
 	end
+
 	return false
 end
 
@@ -336,20 +267,54 @@ function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean
 	return true
 end
 
-function Frustum:GetIfPlaneRendered(origin: Vector3, normal: Vector3): boolean
-	if self.CFrame.LookVector:Dot(normal) > 0 then
-		return false
+function Frustum:GetIfRectangleRendered(a: Vector3, b: Vector3, c: Vector3, d: Vector3): boolean
+	local pos = (a:Lerp(b, 0.5)):Lerp((c:Lerp(b, 0.5)), 0.5)
+	local radius = math.max((pos-a).Magnitude, (pos-b).Magnitude, (pos-c).Magnitude, (pos-d).Magnitude)
+	if not self:GetIfSphereRendered(pos, radius) then return false end
+	if self:GetIfPointRendered(a) then return true end
+	if self:GetIfPointRendered(b) then return true end
+	if self:GetIfPointRendered(c) then return true end
+	if self:GetIfPointRendered(d) then return true end
 
-	else
-		local _pos, distance = GeometryUtil.getPlaneIntersection(
-			self.CFrame.Position,
-			self.CFrame.LookVector,
-			origin, 
-			normal
-		)
-		
-		return (math.abs(self.NearPlaneZ) <= distance and math.abs(self.FarPlaneDistance) >= distance)
+	for i, ray in ipairs(self.Rays) do
+		local intersection = getRectangleIntersection(ray.Origin, ray.Direction, a, b, c, d) 
+		if intersection then
+			return true
+		end
 	end
+
+	return false
+end
+
+function Frustum:GetIfTriangleRendered(a: Vector3, b: Vector3, c: Vector3): boolean
+	if self:GetIfPointRendered(a) then return true end
+	if self:GetIfPointRendered(b) then return true end
+	if self:GetIfPointRendered(c) then return true end
+
+	for i, ray in ipairs(self.Rays) do
+		local intersection = getTriangleIntersection(ray.Origin, ray.Direction, a, b, c) 
+		if intersection then
+			return true
+		end
+	end
+	return false
+end
+
+function Frustum:GetIfPlaneRendered(origin: Vector3, normal: Vector3): boolean
+	for i, ray in ipairs(self.Rays) do
+		local intersection = getPlaneIntersection(
+			origin, 
+			normal,
+			ray.Origin, 
+			ray.Direction
+		)
+
+		if intersection then
+			return true
+		end
+	end
+
+	return false
 end
 
 function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean	
@@ -365,64 +330,36 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 			{cf.UpVector * size.Y, cf.RightVector * size.X, -cf.LookVector * size.Z},
 			{-cf.LookVector * size.Z, cf.RightVector * size.X, cf.UpVector * size.Y}
 		}) do
-			local zVec = vectors[1]
 			local xVec = vectors[2]
 			local yVec = vectors[3]
+
+			local function solveFace(zVec: Vector3): boolean
+				local position = cf.Position + zVec / 2
+
+				local c1 = position + (xVec/2) + (yVec/2)
+				if self:GetIfPointRendered(c1) then return true end
 	
-			if zVec:Dot(lVec) > 0 then
-				zVec *= -1
+				local c2 = position - (xVec/2) + (yVec/2)
+				if self:GetIfPointRendered(c2) then return true end
+	
+				local c3 = position + (xVec/2) - (yVec/2)
+				if self:GetIfPointRendered(c3) then return true end
+	
+				local c4 = position - (xVec/2) - (yVec/2)
+				if self:GetIfPointRendered(c4) then return true end
+		
+				if self:GetIfRectangleRendered(c1, c2, c3, c4) then
+					return true
+				end
+				return false
 			end
-	
-			local position = cf.Position + zVec / 2
-
-			local c1 = position + (xVec/2) + (yVec/2)
-
-
-			local c1ScreenPos: Vector3, isC1Visible: boolean = self.Camera:WorldToViewportPoint(c1)
-			-- makePoint(c1, `C1: {isC1Visible}`)
-
-			if isC1Visible and self:_GetIfPointIsCloseEnough(c1ScreenPos) then return true end
-
-			local c2 = position - (xVec/2) + (yVec/2)
-
-			
-			local c2ScreenPos: Vector3, isC2Visible: boolean = self.Camera:WorldToViewportPoint(c2)
-			-- makePoint(c2, `C2: {isC2Visible}`)
-
-			if isC2Visible and self:_GetIfPointIsCloseEnough(c2ScreenPos) then return true end
-
-			if self:GetIfRayRendered(Ray.new(c1, c2-c1), true) then return true end
-
-			local c3 = position + (xVec/2) - (yVec/2)
-			
-			local c3ScreenPos: Vector3, isC3Visible: boolean = self.Camera:WorldToViewportPoint(c3)
-			-- makePoint(c3, `C3: {isC3Visible}, {c3ScreenPos}`)
-
-			if isC3Visible and self:_GetIfPointIsCloseEnough(c3ScreenPos) then return true end
-
-			if self:GetIfRayRendered(Ray.new(c1, c3-c1), true) then return true end
-
-			local c4 = position - (xVec/2) - (yVec/2)
-			local c4ScreenPos: Vector3, isC4Visible: boolean = self.Camera:WorldToViewportPoint(c4)
-			-- makePoint(c4, `C4: {isC4Visible}`)
-			if isC4Visible and self:_GetIfPointIsCloseEnough(c4ScreenPos) then return true end
-
-			if self:GetIfRayRendered(Ray.new(c4, c2-c4), true) then return true end
-			if self:GetIfRayRendered(Ray.new(c4, c3-c4), true) then return true end
-
-			if getIfInFrontOfCamera(self.CFrame, c1) or getIfInFrontOfCamera(self.CFrame, c2) 
-			or getIfInFrontOfCamera(self.CFrame, c3) or getIfInFrontOfCamera(self.CFrame, c4) then
-
-				local centerPlanePosition, centerDist = GeometryUtil.getPlaneIntersection(
-					self.CFrame.Position, 
-					self.CFrame.LookVector,
-					position,
-					zVec
-				)
-
-				if centerPlanePosition and centerDist > -self.NearPlaneZ then
-					local centerScreenPos: Vector3, isCenterVisible: boolean = self.Camera:WorldToViewportPoint(centerPlanePosition)
-					if isCenterVisible and self:_GetIfPointIsCloseEnough(centerScreenPos) then return true end
+			if vectors[1]:Dot(lVec) < 0 then
+				if solveFace(vectors[1]) then
+					return true
+				end
+			else
+				if solveFace(-vectors[1]) then
+					return true
 				end
 			end
 		end
@@ -431,140 +368,17 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 	return false
 end
 
-
-function Frustum:GetNearPlaneRenderCells(cellCount: number): {[number]: Vector2}
-
-	local area = self.ViewportSize.X * self.ViewportSize.Y
-	local cellPixelWidth = (area ^ 0.5) / (cellCount ^ 0.5)
-
-	local function getStudOffsets(maxPixelCount: number, nearStudWidth: number): {[number]: number}
-		local count = math.floor(maxPixelCount / cellPixelWidth)
-		local halfStartStudOffset = (-nearStudWidth * 0.5)
-		local coordinates: {[number]: number} = {}
-		for i=0, count do
-			local pxStart = maxPixelCount * i/count
-			local pxFinish =  maxPixelCount * (i+1)/count
-			local pxWidth = pxFinish - pxStart
-			local pxCenter = pxStart + pxWidth * 0.5
-			table.insert(coordinates, halfStartStudOffset + (pxCenter/maxPixelCount) * nearStudWidth)
-		end
-		return coordinates
-	end
-
-	local xStudOffsets = getStudOffsets(
-		self.ViewportSize.X, 
-		(self.NearBottomLeft - self.NearBottomRight).Magnitude
-	)
-	local yStudOffsets = getStudOffsets(
-		self.ViewportSize.Y, 
-		(self.NearBottomLeft - self.NearTopLeft).Magnitude
-	)
-
-	local samples: {[number]: Vector2} = {}
-	for iX, xOffset in ipairs(xStudOffsets) do
-		for iY, yOffset in ipairs(yStudOffsets) do
-			table.insert(samples, Vector2.new(xOffset, yOffset))
-		end
-	end
-
-	return samples
-end
-
-function Frustum:TagCast(sampleCount: number, raycastParams: RaycastParams?, worldRoot: WorldRoot?, noOccludeTag: string?)
-	worldRoot = worldRoot or workspace
-	assert(worldRoot)
-
-	if not raycastParams then
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Exclude
-		params.IgnoreWater = false
-		params.RespectCanCollide = false
-		params.FilterDescendantsInstances = {}
-
-		raycastParams = params
-	end
-	assert(raycastParams)
-	
-	for i, offset in ipairs(self:GetNearPlaneRenderCells(sampleCount)) do
-
-		local lookVector = getCellVector(self.CFrame, self.NearPlaneZ, offset)
-		local distance = getCellRenderDistance(self.CFrame, lookVector, self.FarPlaneDistance)
-
-		-- local vec = Draw.vector(self.CFrame.Position, (distance*lookVector - self.CFrame.Position))
-		-- if vec then
-		-- 	task.spawn(function()
-		-- 		task.wait()
-		-- 		vec:Destroy()
-		-- 	end)
-		-- end
-
-		local out = recursiveCellCast(
-			self.CFrame, 
-			lookVector, 
-			self.NearPlaneZ, 
-			distance, 
-			raycastParams, 
-			worldRoot, 
-			noOccludeTag
-		)
-
-		for i, obscureResult in ipairs(out) do
-			local result = obscureResult.Result
-			local inst = result.Instance
-			local isVisible = obscureResult.IsVisible
-
-			inst:SetAttribute(LAST_SEEN_ATTR_KEY, tick())
-
-			if not CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
-				CollectionService:AddTag(inst, IN_FRUSTUM_TAG)
-			end
-
-			if isVisible then
-				if not CollectionService:HasTag(inst, VISIBLE_TAG) then
-					CollectionService:AddTag(inst, VISIBLE_TAG)
-				end
-				if CollectionService:HasTag(inst, OBSCURED_TAG) then
-					CollectionService:RemoveTag(inst, OBSCURED_TAG)
-				end
-				if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
-					CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
-				end
-			else
-				if not CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
-					CollectionService:AddTag(inst, INITIAL_OBSCURED_TAG)
-				end
-				if CollectionService:HasTag(inst, VISIBLE_TAG) then
-					CollectionService:RemoveTag(inst, VISIBLE_TAG)
-				end
-			end
-
-		end
-	end
-end
-
 function Frustum:Draw(): Folder
 	local folder = Instance.new("Folder")
-	local function line(p1: Vector3, p2: Vector3, color: Color3)
-		local vec = Draw.vector(p1, p2-p1, color, folder, 0.1)
+	local function line(origin: Vector3, direction: Vector3, color: Color3)
+		local vec = Draw.vector(origin, direction, color, folder, 2)
 		vec.Locked = true
+		vec.Archivable = false
 	end
-	local nearColor = Color3.new(1,0,0)
-	line(self.NearBottomLeft, self.NearBottomRight, nearColor)
-	line(self.NearBottomLeft, self.NearTopLeft, nearColor)
-	line(self.NearBottomRight, self.NearTopRight, nearColor)
-	line(self.NearTopLeft, self.NearTopRight, nearColor)
 
-	local farColor = Color3.new(0,1,0)
-	line(self.FarBottomLeft, self.FarBottomRight, farColor)
-	line(self.FarBottomLeft, self.FarTopLeft, farColor)
-	line(self.FarBottomRight, self.FarTopRight, farColor)
-	line(self.FarTopLeft, self.FarTopRight, farColor)
-
-	local edgeColor = Color3.new(0,0,1)
-	line(self.FarBottomLeft, self.NearBottomLeft, edgeColor)
-	line(self.FarBottomRight, self.NearBottomRight, edgeColor)
-	line(self.FarTopRight, self.NearTopRight, edgeColor)
-	line(self.FarTopLeft, self.NearTopLeft, edgeColor)
+	for i, ray in ipairs(self.Rays) do
+		line(ray.Origin, ray.Direction, Color3.new(1,0,1))
+	end
 
 	folder.Parent = workspace.CurrentCamera
 	return folder
@@ -582,7 +396,8 @@ function Frustum.new(camera: Camera, maxRenderDistance: number): Frustum
 	self.NearPlaneZ = camera:GetAttribute("NearPlaneZ") or camera.NearPlaneZ
 
 	self.HalfFieldOfView = math.rad(camera.FieldOfView / 2)
-	
+	self.HalfHorizontalFieldOfView = self.AspectRatio * self.HalfFieldOfView
+
 	self.HalfFarPlaneHeight = 2 * math.tan(self.HalfFieldOfView) * self.FarPlaneDistance / 2
 	self.HalfFarPlaneWidth = self.HalfFarPlaneHeight * self.AspectRatio
 	self.HalfNearPlaneHeight = 2 * math.tan(self.HalfFieldOfView) * -self.NearPlaneZ / 2
@@ -606,7 +421,27 @@ function Frustum.new(camera: Camera, maxRenderDistance: number): Frustum
 	self.Planes.Left = newPlane(self.NearTopLeft, self.NearBottomLeft, self.FarTopLeft)
 	self.Planes.Right = newPlane(self.NearTopRight, self.FarTopRight, self.NearBottomRight)
 
+	self.Rays = {
+		Ray.new(self.FarTopLeft, self.FarTopRight - self.FarTopLeft),
+		Ray.new(self.FarTopLeft, self.NearTopLeft - self.FarTopLeft),
+		Ray.new(self.FarTopRight, self.NearTopRight - self.FarTopRight),
+		Ray.new(self.NearTopLeft, self.NearTopRight - self.NearTopLeft),
+
+		Ray.new(self.FarBottomLeft, self.FarBottomRight - self.FarBottomLeft),
+		Ray.new(self.FarBottomLeft, self.NearBottomLeft - self.FarBottomLeft),
+		Ray.new(self.FarBottomRight, self.NearBottomRight - self.FarBottomRight),
+		Ray.new(self.NearBottomLeft, self.NearBottomRight - self.NearBottomLeft),
+
+		Ray.new(self.NearBottomLeft, self.NearTopLeft - self.NearBottomLeft),
+		Ray.new(self.FarBottomLeft, self.FarTopLeft - self.FarBottomLeft),
+		Ray.new(self.NearBottomRight, self.NearTopRight - self.NearBottomRight),
+		Ray.new(self.FarBottomRight, self.FarTopRight - self.FarBottomRight),
+	}
+
+
 	table.freeze(self.Planes)
+	table.freeze(self.Rays)
+
 	table.freeze(self)
 
 	return self

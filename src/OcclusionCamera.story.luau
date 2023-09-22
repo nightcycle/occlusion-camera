@@ -30,27 +30,32 @@ return function(frame: Frame)
 	task.spawn(function()
 		local OcclusionCamera = require(_Package)
 
-		local part = maid:GiveTask(Instance.new("Part"))
-		part.Name = "CameraHolder"
-		part.CFrame = CFrame.new(-53, 20, 41) * CFrame.fromOrientation(0, math.rad(150), 0)
-		part.Size = Vector3.new(2, 1, 0.05)
-		part.Anchored = true
-		part.Parent = workspace
+		local part = workspace:FindFirstChild("CameraHolder")
+		if not part then
+			part = Instance.new("Part")
+			assert(part and part:IsA("BasePart"))
+			part.Name = "CameraHolder"
+			part.CFrame = CFrame.new(-189.282, 109, 117.047) * CFrame.fromOrientation(0, math.rad(150), 0)
+			part.Size = Vector3.new(2, 1, 0.05)
+			part.Anchored = true
+			part.Parent = workspace
+		end
+		assert(part and part:IsA("BasePart"))
 
 		local camera: Camera
 		if USE_REAL_CAMERA then
 			camera = workspace.CurrentCamera
 		else
 			camera = maid:GiveTask(Instance.new("Camera"))
+			camera:SetAttribute("NearPlaneZ", -25)
 			camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
 			camera.FieldOfView = 55
 			camera.Parent = part
 		end		
 
-
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
 		oCam.OnlyUpdateOnCameraMove = false
-		oCam.MaxRenderDistance = 512
+		oCam.MaxRenderDistance = 2048
 		oCam.RaycastParams.FilterDescendantsInstances = Map:GetChildren()--}
 		oCam.RaycastParams.FilterType = Enum.RaycastFilterType.Include
 
@@ -108,6 +113,10 @@ return function(frame: Frame)
 		for i, inst in ipairs(Map:GetChildren()) do
 			if inst:IsA("BasePart") then
 				inst.Color = Color3.fromHSV(0,0,0.8)
+				local decal = inst:FindFirstChildOfClass("Decal")
+				if decal then
+					decal.Color3 = inst.Color
+				end
 			end
 		end
 		for k, v in pairs(highlights) do
