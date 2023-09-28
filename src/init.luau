@@ -10,7 +10,6 @@ local Maid = require(_Packages:WaitForChild("Maid"))
 local Signal = require(_Packages:WaitForChild("Signal"))
 local Draw = require(_Packages:WaitForChild("Draw"))
 
-
 -- Modules
 local Config = require(_Package:WaitForChild("Config"))
 local Frustum = require(_Package:WaitForChild("Frustum"))
@@ -18,6 +17,7 @@ local Frustum = require(_Package:WaitForChild("Frustum"))
 -- Types
 -- Constants
 local DEBUG_DRAW = false --_Package:GetFullName() == "ReplicatedStorage.Packages.package"
+local DEBUG_RENDER = true
 local IN_FRUSTUM_TAG = Config.Tag.InFrustum
 local OBSCURED_TAG = Config.Tag.Obscured
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
@@ -27,6 +27,7 @@ local PROCESS_LIMIT = 3
 -- Variables
 -- References
 -- Private Functions
+
 -- Class
 -- Types
 type Signal = Signal.Signal
@@ -191,115 +192,88 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	end
 	self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(onRemoveFrustumTag))
 
-	local total = {}
-	local steps = 0
-
 	self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 		if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
 			prevCF = self.Instance:GetRenderCFrame()
-			steps += 1
-			task.delay(1, function()
-				steps -= 1
-			end)
-			-- local a = tick()
+
+			local a = tick()
 
 			local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
 
-			-- local a2 = tick()
-			-- self.Instance:SetAttribute("Construction", math.round(1000*(a2-a)/(1/60)))
+			local a2 = tick()
+			self.Instance:SetAttribute("Construction", math.round(1000*(a2-a)/(1/60)))
 
 			if DEBUG_DRAW then
 				self._Maid._frustumDraw = frustum:Draw()
 			end
 
-			-- local a3 = tick()
-			-- self.Instance:SetAttribute("Draw", math.round(1000*(a3-a2)/(1/60)))
+			local a3 = tick()
+			self.Instance:SetAttribute("Draw", math.round(1000*(a3-a2)/(1/60)))
 
-			local speedTest: {[string]: number} = {}
-			local census: {[string]: number} = {}
+			local parts: {[number]: BasePart} = {}
+
 			for i, inst in ipairs(self.RaycastParams.FilterDescendantsInstances) do
 				if inst:IsA("BasePart") then
-					local isInFrustum: boolean
-					speedTest[inst.Name] = speedTest[inst.Name] or 0
-					census[inst.Name] = census[inst.Name] or 0
-					local start = tick()
-					isInFrustum = frustum:GetIfPartRendered(inst)
-					-- if inst.Name == "Block" then
-					-- 	isInFrustum = frustum:GetIfBlockRendered(inst.CFrame, inst.Size)
-					-- elseif inst.Name == "Ray" then
-					-- 	isInFrustum = frustum:GetIfRayRendered(
-					-- 		Ray.new(
-					-- 			(inst.CFrame * CFrame.new(-inst.Size.X/2,0,0)).Position,
-					-- 			inst.CFrame.RightVector * inst.Size.X
-					-- 		)
-					-- 	)
-					-- elseif inst.Name == "Sphere" then
-					-- 	isInFrustum = frustum:GetIfSphereRendered(
-					-- 		inst.Position,
-					-- 		math.min(inst.Size.X, inst.Size.Y, inst.Size.Z)/2
-					-- 	)
-					-- elseif inst.Name == "Point" then
-					-- 	isInFrustum = frustum:GetIfPointRendered(
-					-- 		inst.Position
-					-- 	)
-					-- elseif inst.Name == "Plane" then
-					-- 	isInFrustum = frustum:GetIfPlaneRendered(
-					-- 		inst.Position,
-					-- 		inst.CFrame.UpVector
-					-- 	)
-					-- elseif inst.Name == "SquareSurface" then
-					-- 	local xVec = inst.CFrame.RightVector * inst.Size.X
-					-- 	local yVec = inst.CFrame.LookVector * inst.Size.Z
-
-					-- 	local position = inst.CFrame.Position
-			
-					-- 	local c1 = position + (xVec/2) + (yVec/2)
-					-- 	local c2 = position - (xVec/2) + (yVec/2)	
-					-- 	local c3 = position + (xVec/2) - (yVec/2)
-					-- 	local c4 = position - (xVec/2) - (yVec/2)
-
-					-- 	isInFrustum = frustum:GetIfRectangleRendered(
-					-- 		c1, c2, c3, c4
-					-- 	)
-					-- elseif inst.Name == "TriangleSurface" then
-					-- 	local position = inst.CFrame.Position
-					-- 	local xVec = inst.CFrame.LookVector * inst.Size.Z
-					-- 	local yVec = inst.CFrame.UpVector * inst.Size.Y
-
-					-- 	local c1 = position - (xVec/2) - (yVec/2)
-					-- 	local c2 = position - (xVec/2) + (yVec/2)	
-					-- 	local c3 = position + (xVec/2) - (yVec/2)
-
-					-- 	isInFrustum = frustum:GetIfTriangleRendered(
-					-- 		c1, c2, c3
-					-- 	)
-					-- end
-					speedTest[inst.Name] += 100*(tick() - start)
-					census[inst.Name] += 1
-					if isInFrustum == nil then
-						inst.Color = Color3.new(1,0,0)
-					else
-						inst.Color = if isInFrustum then Color3.new(1,0.5,0) else Color3.new(0,0.5,1)
+					local isInFrustum: boolean = frustum:GetIfPartRendered(inst)
+					if isInFrustum == true then
+						table.insert(parts, inst)
 					end
-					local decal = inst:FindFirstChildOfClass("Decal")
-					if decal then
-						decal.Color3 = inst.Color
-					end
+					inst.Color = if isInFrustum then Color3.new(1,0.5,0) else Color3.fromHSV(0,0,0.5)
 				end
 			end
 
-			-- local b = tick()
-			-- self.Instance:SetAttribute("Cast", math.round(1000*(b-a3)/(1/60)))
-			for k, v in pairs(speedTest) do
-				local value = (1/120)/(v / census[k])
-				total[k] = total[k] or 0
-				total[k] += value
-				if total[k] then
-					self.Instance:SetAttribute(k, math.round(total[k]/steps))
+			local b = tick()
+			self.Instance:SetAttribute("Cast", math.round(1000*(b-a3)/(1/60)))
+
+			local rectRegistry: {[BasePart]: Rect} = {}
+			for i, part in ipairs(parts) do
+				local rect = frustum:GetOuterBlockBounds(part.CFrame, part.Size)
+				rectRegistry[part] = rect
+			end
+
+			table.sort(parts, function(a: BasePart, b: BasePart): boolean
+				local aR = rectRegistry[a]
+				local bR = rectRegistry[b]
+				return (aR.Min - aR.Max).Magnitude > (bR.Min - bR.Max).Magnitude
+			end)
+
+			if DEBUG_RENDER then
+				-- local screenPart = Instance.new("Part")
+				-- screenPart.Size = Vector3.new(frustum.HalfNearPlaneWidth*2, frustum.HalfNearPlaneHeight*2, 0.05)
+				-- screenPart.CFrame = frustum.CFrame * CFrame.new(0,0,frustum.NearPlaneZ)
+				-- screenPart.Transparency = 1
+				-- screenPart.Anchored = true
+				-- screenPart.Parent = workspace
+
+				local screen = Instance.new("ScreenGui")
+				-- screen.Face = Enum.NormalId.Back
+				-- screen.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+				-- screen.CanvasSize = frustum.ViewportSize
+				-- screen.Parent = screenPart
+	
+
+				for k, rect in pairs(rectRegistry) do
+					local frame = Instance.new("Frame")
+					frame.BorderSizePixel = 2
+					frame.BackgroundTransparency = 0.7
+					frame.Position = UDim2.fromOffset(
+						rect.Min.X + rect.Width/2, 
+						rect.Min.Y + rect.Height/2
+					)
+					frame.AnchorPoint = Vector2.new(0.5,0.5)
+					frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
+					frame.Parent = screen
 				end
-				task.delay(1, function()
-					total[k] -= value
-				end)
+
+				screen.Parent = game:GetService("CoreGui")
+
+				self._Maid._screen = screen
+
+			end
+
+
+			for i, part in ipairs(parts) do
+
 			end
 
 			-- local tagged = CollectionService:GetTagged(IN_FRUSTUM_TAG)

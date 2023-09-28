@@ -15,7 +15,7 @@ local OBSCURED_TAG = Config.Tag.Obscured
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local VISIBLE_TAG = Config.Tag.Visible
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
-local USE_REAL_CAMERA = false
+local USE_REAL_CAMERA = true
 -- Variables
 -- References
 local Map = workspace:WaitForChild("Map")
@@ -47,14 +47,14 @@ return function(frame: Frame)
 			camera = workspace.CurrentCamera
 		else
 			camera = maid:GiveTask(Instance.new("Camera"))
-			camera:SetAttribute("NearPlaneZ", -25)
+			camera:SetAttribute("NearPlaneZ", -50)
 			camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
 			camera.FieldOfView = 55
 			camera.Parent = part
 		end		
 
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
-		oCam.OnlyUpdateOnCameraMove = false
+		-- oCam.OnlyUpdateOnCameraMove = false
 		oCam.MaxRenderDistance = 2048
 		oCam.RaycastParams.FilterDescendantsInstances = Map:GetChildren()--}
 		oCam.RaycastParams.FilterType = Enum.RaycastFilterType.Include

@@ -53,7 +53,7 @@ export type Frustum = {
 	NearBottomRight: Vector3,
 	Rays: {[number]: Ray},
 	Planes: {[string]: Plane},
-	_GetViewportPosition: (self: Frustum, point: Vector3) -> (Vector3, boolean),
+	GetViewportPosition: (self: Frustum, point: Vector3) -> (Vector3, boolean),
 	_GetIfPointIsCloseEnough: (self: Frustum, point: Vector3) -> boolean,
 	GetIfPointRendered: (self: Frustum, point: Vector3) -> boolean,
 	GetIfRectangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> boolean,
@@ -63,6 +63,7 @@ export type Frustum = {
 	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3) -> boolean,
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
 	GetIfPartRendered: (self: Frustum, part: BasePart) -> boolean,
+	GetOuterBlockBounds: (self: Frustum, cf: CFrame, size: Vector3) -> Rect,
 	Draw: (self: Frustum) -> Folder,
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
@@ -187,7 +188,7 @@ end
 local Frustum = {} :: Frustum
 Frustum.__index = Frustum
 
-function Frustum:_GetViewportPosition(point: Vector3): (Vector3, boolean)
+function Frustum:GetViewportPosition(point: Vector3): (Vector3, boolean)
 	if USE_CUSTOM_VIEWPORT_MATH then
 		local offset = self.CFrame:PointToObjectSpace(point)
 		local xAngle = math.atan2(offset.X, offset.Z)
@@ -208,6 +209,7 @@ function Frustum:_GetViewportPosition(point: Vector3): (Vector3, boolean)
 		return self.Camera:WorldToViewportPoint(point)
 	end
 end
+
 
 function Frustum:_GetIfPointIsCloseEnough(point: Vector3): boolean
 	local offset = self.CFrame:PointToObjectSpace(point)
@@ -238,7 +240,7 @@ function Frustum:GetIfRayRendered(ray: Ray): boolean
 		)
 
 		if intersection then
-			local _screenPos, isVisible = self:_GetViewportPosition(intersection)
+			local _screenPos, isVisible = self:GetViewportPosition(intersection)
 			if isVisible then
 				return true
 			end
@@ -246,6 +248,59 @@ function Frustum:GetIfRayRendered(ray: Ray): boolean
 	end
 
 	return false
+end
+
+function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
+	local min = Vector2.new(math.huge, math.huge)
+	local max = -Vector2.new(math.huge, math.huge)
+
+	local function compare(v: Vector3)
+		if v.X < min.X then
+			min = Vector2.new(v.X, min.Y)
+		end
+		if v.Y < min.Y then
+			min = Vector2.new(min.X, v.Y)
+		end
+		if v.X > max.X then
+			max = Vector2.new(v.X, max.Y)
+		end
+		if v.Y > max.Y then
+			max = Vector2.new(max.X, v.Y)
+		end
+	end
+
+	local lVec = self.CFrame.LookVector
+	for i, vectors in ipairs({
+		{cf.RightVector * size.X, -cf.LookVector * size.Z, cf.UpVector * size.Y},
+		{cf.UpVector * size.Y, cf.RightVector * size.X, -cf.LookVector * size.Z},
+		{-cf.LookVector * size.Z, cf.RightVector * size.X, cf.UpVector * size.Y}
+	}) do
+		local xVec = vectors[2]
+		local yVec = vectors[3]
+
+		local zVec = vectors[1]
+		if zVec:Dot(lVec) > 0 then
+			zVec *= -1
+		end
+		local position = cf.Position + zVec / 2
+
+		local c1 = position + (xVec/2) + (yVec/2)
+		local s1, _ = self:GetViewportPosition(c1)
+		compare(s1)
+		local c2 = position - (xVec/2) + (yVec/2)
+		local s2, _ = self:GetViewportPosition(c2)
+		compare(s2)
+
+		local c3 = position + (xVec/2) - (yVec/2)
+		local s3, _ = self:GetViewportPosition(c3)
+		compare(s3)
+
+		local c4 = position - (xVec/2) - (yVec/2)
+		local s4, _ = self:GetViewportPosition(c4)
+		compare(s4)
+	end
+
+	return Rect.new(min, max)
 end
 
 function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean
