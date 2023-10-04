@@ -9,6 +9,12 @@
 -- Private Functions
 -- Class
 return {
+	Debug = {
+		NoDebugRender = true,
+		Culling = false,
+		Occlusion = false,
+		UseExactCulling = false, --slower
+	},
 	Tag = {
 		InFrustum = "OcclusionCameraInFrustum",
 		InitialObscured = "OcclusionCameraInitialObscured",

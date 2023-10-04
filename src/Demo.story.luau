@@ -15,7 +15,9 @@ local OBSCURED_TAG = Config.Tag.Obscured
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local VISIBLE_TAG = Config.Tag.Visible
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
-local USE_REAL_CAMERA = true
+local FIELD_OF_VIEW = 55
+local MAX_RENDER_DISTANCE = 2048
+local USE_REAL_CAMERA = false
 -- Variables
 -- References
 local Map = workspace:WaitForChild("Map")
@@ -39,8 +41,12 @@ return function(frame: Frame)
 			part.Size = Vector3.new(2, 1, 0.05)
 			part.Anchored = true
 			part.Parent = workspace
+			
 		end
 		assert(part and part:IsA("BasePart"))
+		for k, v in pairs(part:GetAttributes()) do
+			part:SetAttribute(k, nil)
+		end
 
 		local camera: Camera
 		if USE_REAL_CAMERA then
@@ -49,15 +55,21 @@ return function(frame: Frame)
 			camera = maid:GiveTask(Instance.new("Camera"))
 			camera:SetAttribute("NearPlaneZ", -50)
 			camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
-			camera.FieldOfView = 55
+			camera.FieldOfView = FIELD_OF_VIEW
 			camera.Parent = part
+			
+			maid:GiveTask(camera.AttributeChanged:Connect(function(key: string)
+				part:SetAttribute(key, camera:GetAttribute(key))
+			end))
+
+			for k, v in pairs(camera:GetAttributes()) do
+				part:SetAttribute(k, v)
+			end
 		end		
 
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
-		-- oCam.OnlyUpdateOnCameraMove = false
-		oCam.MaxRenderDistance = 2048
-		oCam.RaycastParams.FilterDescendantsInstances = Map:GetChildren()--}
-		oCam.RaycastParams.FilterType = Enum.RaycastFilterType.Include
+		oCam.OnlyUpdateOnCameraMove = false
+		oCam.MaxRenderDistance = MAX_RENDER_DISTANCE
 
 		maid:GiveTask(RunService.RenderStepped:Connect(function()
 			if camera ~= workspace.CurrentCamera then
@@ -99,9 +111,7 @@ return function(frame: Frame)
 				highlights[part] = nil
 			end
 		end))
-
-
-		end)
+	end)
 	return function()
 		maid:Destroy()
 		for i, inst in ipairs(CollectionService:GetTagged(IN_FRUSTUM_TAG)) do

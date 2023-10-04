@@ -16,14 +16,16 @@ local Frustum = require(_Package:WaitForChild("Frustum"))
 
 -- Types
 -- Constants
-local DEBUG_DRAW = false --_Package:GetFullName() == "ReplicatedStorage.Packages.package"
-local DEBUG_RENDER = true
+local NO_DEBUG_RENDER = Config.Debug.NoDebugRender
+local DEBUG_OCCLUSION = Config.Debug.Occlusion
+local DEBUG_CULLING = Config.Debug.Culling
 local IN_FRUSTUM_TAG = Config.Tag.InFrustum
 local OBSCURED_TAG = Config.Tag.Obscured
 local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local VISIBLE_TAG = Config.Tag.Visible
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
-local PROCESS_LIMIT = 3
+local PROCESS_LIMIT = 10
+local RENDER_DURATION = 0.5/60
 -- Variables
 -- References
 -- Private Functions
@@ -32,6 +34,7 @@ local PROCESS_LIMIT = 3
 -- Types
 type Signal = Signal.Signal
 type Maid = Maid.Maid
+type Frustum = Frustum.Frustum
 export type OcclusionCamera = {
 	__index: OcclusionCamera,
 	_Maid: Maid,
@@ -56,6 +59,7 @@ export type OcclusionCamera = {
 	GetIfPartIsInFrustum: (self: OcclusionCamera, part: BasePart) -> boolean,
 	Destroy: (self: OcclusionCamera) -> (),
 	new: (camera: Camera) -> OcclusionCamera,
+	frustum: (camera: Camera, maxRenderDistance: number) -> Frustum,
 }
 
 -- Class
@@ -192,135 +196,205 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	end
 	self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(onRemoveFrustumTag))
 
-	self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
-		if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
-			prevCF = self.Instance:GetRenderCFrame()
+	if DEBUG_CULLING or DEBUG_OCCLUSION then
+					
+		local function toMilliseconds(v: number): number
+			return math.round(1000*10000*v)/10000
+		end
 
-			local a = tick()
+		if DEBUG_CULLING then
+			local debugInstances: {[number]: Instance} = workspace:WaitForChild("Map"):GetChildren()
+			self._Maid:GiveTask(function()
+				for i, inst in ipairs(debugInstances) do
+					if inst:IsA("BasePart") then
+						inst.Color = Color3.fromHSV(1,0,0.75)
+					end
+				end
+			end)
+			self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
+				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
 
-			local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
+				if not NO_DEBUG_RENDER then
+					self._Maid._frustumDraw = frustum:Draw()
+				end
 
-			local a2 = tick()
-			self.Instance:SetAttribute("Construction", math.round(1000*(a2-a)/(1/60)))
+				local measurements: {[string]: {[number]: number}} = {}
+				for i, inst in ipairs(debugInstances) do
+					if inst:IsA("BasePart") then
+						measurements[inst.Name] = measurements[inst.Name] or {}
+						local start = tick()
+						local isInFrustum: boolean = frustum:GetIfPartRendered(inst)
+						local finish = tick()
+						table.insert(measurements[inst.Name], finish - start)
+						if not NO_DEBUG_RENDER then
+							inst.Color = if not isInFrustum then Color3.new(0,0.5,1) else Color3.fromHSV(0,0.75,1)
+						end
+					end
+				end
+				
+				local netSum = 0
+				local netCount = 0
+				for k, vList in pairs(measurements) do
+					local sum = 0
+					local count = #vList
+					for i, v in ipairs(vList) do
+						sum += v
+					end
+					netSum += sum
+					netCount += count
+					local duration = sum/count
+					self.Instance:SetAttribute(`_{k}_ms`, toMilliseconds(duration))
+					self.Instance:SetAttribute(`_{k}_limit`, math.floor(RENDER_DURATION/duration))
 
-			if DEBUG_DRAW then
-				self._Maid._frustumDraw = frustum:Draw()
+				end
+
+				local netDuration = netSum/netCount
+				self.Instance:SetAttribute(`net_ms`, toMilliseconds(netDuration))
+				self.Instance:SetAttribute(`net_limit`, math.floor(RENDER_DURATION/netDuration))
+
+			end))
+		else
+			local parts: {[number]: BasePart} = workspace:WaitForChild("SmallerMap"):GetChildren() :: any
+			for i, part in ipairs(parts) do
+				assert(part:IsA("BasePart"), `inst {part:GetFullName()} isn't a basePart`)
 			end
 
-			local a3 = tick()
-			self.Instance:SetAttribute("Draw", math.round(1000*(a3-a2)/(1/60)))
+			self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 
-			local parts: {[number]: BasePart} = {}
+				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
+		
+				local measurements: {[string]: {[number]: number}} = {}
 
-			for i, inst in ipairs(self.RaycastParams.FilterDescendantsInstances) do
-				if inst:IsA("BasePart") then
-					local isInFrustum: boolean = frustum:GetIfPartRendered(inst)
-					if isInFrustum == true then
-						table.insert(parts, inst)
+				local rectRegistry: {[BasePart]: Rect} = {}
+				for i, part in ipairs(parts) do
+					measurements[part.Name] = measurements[part.Name] or {}
+
+					local start = tick()
+					local rect = frustum:GetOuterBlockBounds(part.CFrame, part.Size)
+					local finish = tick()
+					table.insert(measurements[part.Name], finish - start)
+					rectRegistry[part] = rect
+				end
+	
+				do
+					local netSum = 0
+					local netCount = 0
+					for k, vList in pairs(measurements) do
+						local sum = 0
+						local count = #vList
+						for i, v in ipairs(vList) do
+							sum += v
+						end
+						netSum += sum
+						netCount += count
+						local duration = sum/count
+						self.Instance:SetAttribute(`_outbounds_{k}_ms`, toMilliseconds(duration))
+						self.Instance:SetAttribute(`_outbounds_{k}_limit`, math.floor(RENDER_DURATION/duration))
+
 					end
-					inst.Color = if isInFrustum then Color3.new(1,0.5,0) else Color3.fromHSV(0,0,0.5)
+
+					local netDuration = netSum/netCount
+					self.Instance:SetAttribute(`outbounds_net_ms`, toMilliseconds(netDuration))
+					self.Instance:SetAttribute(`outbounds_net_limit`, math.floor(RENDER_DURATION/netDuration))
+				end
+
+				table.sort(parts, function(a: BasePart, b: BasePart): boolean
+					local aR = rectRegistry[a]
+					local bR = rectRegistry[b]
+					return (aR.Min - aR.Max).Magnitude > (bR.Min - bR.Max).Magnitude
+				end)
+	
+				if DEBUG_OCCLUSION and not NO_DEBUG_RENDER then
+	
+					local screen = Instance.new("ScreenGui")
+	
+					for k, rect in pairs(rectRegistry) do
+						local frame = Instance.new("Frame")
+						frame.BorderSizePixel = 2
+						frame.BackgroundTransparency = 0.7
+						frame.Position = UDim2.fromOffset(
+							rect.Min.X + rect.Width/2, 
+							rect.Min.Y + rect.Height/2
+						)
+						frame.AnchorPoint = Vector2.new(0.5,0.5)
+						frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
+						frame.Parent = screen
+					end
+	
+					screen.Parent = game:GetService("CoreGui")
+	
+					self._Maid._screen = screen
+				end
+			end))
+		end
+	else
+		self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
+			if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
+				prevCF = self.Instance:GetRenderCFrame()
+				local t = tick()
+				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
+
+				local parts: {[number]: BasePart} = {}
+
+				if not NO_DEBUG_RENDER then
+					self._Maid._frustumDraw = frustum:Draw()
+				end
+
+				local rectRegistry: {[BasePart]: Rect} = {}
+				for i, part in ipairs(parts) do
+					local rect = frustum:GetOuterBlockBounds(part.CFrame, part.Size)
+					rectRegistry[part] = rect
+				end
+
+				table.sort(parts, function(a: BasePart, b: BasePart): boolean
+					local aR = rectRegistry[a]
+					local bR = rectRegistry[b]
+					return (aR.Min - aR.Max).Magnitude > (bR.Min - bR.Max).Magnitude
+				end)
+		
+				local tagged = CollectionService:GetTagged(IN_FRUSTUM_TAG)
+				table.sort(tagged, function(a: Instance, b: Instance)
+					local aTick = a:GetAttribute(LAST_SEEN_ATTR_KEY)
+					local bTick = b:GetAttribute(LAST_SEEN_ATTR_KEY)
+					if bTick and aTick then
+						return aTick < bTick
+					elseif bTick then
+						return false
+					elseif aTick then
+						return true
+					else
+						return false
+					end
+				end)
+
+				for i, inst in ipairs(tagged) do
+					if i > PROCESS_LIMIT then
+						break
+					end
+					local lastSeen = inst:GetAttribute(LAST_SEEN_ATTR_KEY)
+					if lastSeen then
+						if t-lastSeen > self.ObscureDelay then
+							if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+								CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+							end
+						end
+					else
+						if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+							CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+						end
+					end
 				end
 			end
+		end))	
+	end
 
-			local b = tick()
-			self.Instance:SetAttribute("Cast", math.round(1000*(b-a3)/(1/60)))
-
-			local rectRegistry: {[BasePart]: Rect} = {}
-			for i, part in ipairs(parts) do
-				local rect = frustum:GetOuterBlockBounds(part.CFrame, part.Size)
-				rectRegistry[part] = rect
-			end
-
-			table.sort(parts, function(a: BasePart, b: BasePart): boolean
-				local aR = rectRegistry[a]
-				local bR = rectRegistry[b]
-				return (aR.Min - aR.Max).Magnitude > (bR.Min - bR.Max).Magnitude
-			end)
-
-			if DEBUG_RENDER then
-				-- local screenPart = Instance.new("Part")
-				-- screenPart.Size = Vector3.new(frustum.HalfNearPlaneWidth*2, frustum.HalfNearPlaneHeight*2, 0.05)
-				-- screenPart.CFrame = frustum.CFrame * CFrame.new(0,0,frustum.NearPlaneZ)
-				-- screenPart.Transparency = 1
-				-- screenPart.Anchored = true
-				-- screenPart.Parent = workspace
-
-				local screen = Instance.new("ScreenGui")
-				-- screen.Face = Enum.NormalId.Back
-				-- screen.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
-				-- screen.CanvasSize = frustum.ViewportSize
-				-- screen.Parent = screenPart
 	
 
-				for k, rect in pairs(rectRegistry) do
-					local frame = Instance.new("Frame")
-					frame.BorderSizePixel = 2
-					frame.BackgroundTransparency = 0.7
-					frame.Position = UDim2.fromOffset(
-						rect.Min.X + rect.Width/2, 
-						rect.Min.Y + rect.Height/2
-					)
-					frame.AnchorPoint = Vector2.new(0.5,0.5)
-					frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-					frame.Parent = screen
-				end
-
-				screen.Parent = game:GetService("CoreGui")
-
-				self._Maid._screen = screen
-
-			end
-
-
-			for i, part in ipairs(parts) do
-
-			end
-
-			-- local tagged = CollectionService:GetTagged(IN_FRUSTUM_TAG)
-			-- table.sort(tagged, function(a: Instance, b: Instance)
-			-- 	local aTick = a:GetAttribute(LAST_SEEN_ATTR_KEY)
-			-- 	local bTick = b:GetAttribute(LAST_SEEN_ATTR_KEY)
-			-- 	if bTick and aTick then
-			-- 		return aTick < bTick
-			-- 	elseif bTick then
-			-- 		return false
-			-- 	elseif aTick then
-			-- 		return true
-			-- 	else
-			-- 		return false
-			-- 	end
-			-- end)
-
-			-- local c = tick()
-			-- self.Instance:SetAttribute("Sort", math.round(1000*(c-b)/(1/60)))
-
-
-			-- local t = tick()
-			-- for i, inst in ipairs(tagged) do
-			-- 	if i > PROCESS_LIMIT then
-			-- 		break
-			-- 	end
-			-- 	local lastSeen = inst:GetAttribute(LAST_SEEN_ATTR_KEY)
-			-- 	if lastSeen then
-			-- 		if t-lastSeen > self.ObscureDelay then
-			-- 			if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
-			-- 				CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
-			-- 			end
-			-- 		end
-			-- 	else
-			-- 		if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
-			-- 			CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
-			-- 		end
-			-- 	end
-			-- end
-			-- local d = tick()
-			-- self.Instance:SetAttribute("Filter", math.round(1000*(d-c)/(1/60)))
-		end
-	end))
-
-
-
 	return self
+end
+
+function OcclusionCamera.frustum(camera: Camera, maxRenderDistance: number): Frustum
+	return Frustum.new(camera, maxRenderDistance)
 end
 
 

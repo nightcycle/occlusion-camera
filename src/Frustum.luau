@@ -4,7 +4,6 @@ local _Package = script.Parent
 local _Packages = _Package.Parent
 
 -- Services
-local CollectionService = game:GetService("CollectionService")
 
 -- Packages
 local Draw = require(_Packages:WaitForChild("Draw"))
@@ -68,13 +67,8 @@ export type Frustum = {
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
 -- Constants
-local IN_FRUSTUM_TAG = Config.Tag.InFrustum
-local VISIBLE_TAG = Config.Tag.Visible
-local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
-local OBSCURED_TAG = Config.Tag.Obscured
-local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
+local USE_EXACT_CULLING = Config.Debug.UseExactCulling
 local USE_CUSTOM_VIEWPORT_MATH = true
-local RENDER_PARTS_AS_SPHERE = true
 
 -- Variables
 -- References
@@ -419,7 +413,7 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 end
 
 function Frustum:GetIfPartRendered(part: BasePart)
-	if RENDER_PARTS_AS_SPHERE then
+	if not USE_EXACT_CULLING then
 		return self:GetIfSphereRendered(part.Position, part.Size.Magnitude/2)
 	else
 		if part:IsA("Part") then
