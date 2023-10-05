@@ -10,6 +10,7 @@ local Draw = require(_Packages:WaitForChild("Draw"))
 
 -- Modules
 local Config = require(_Package:WaitForChild("Config"))
+local BlockInfo = require(_Package:WaitForChild("BlockInfo"))
 
 -- Types
 export type Plane = {
@@ -27,6 +28,11 @@ export type Surface = {
 	Corners: {
 		[number]: Vector3,
 	}
+}
+export type Triangle = {
+	A: Vector2,
+	B: Vector2,
+	C: Vector2
 }
 export type Frustum = {
 	__index: Frustum,
@@ -52,6 +58,7 @@ export type Frustum = {
 	NearBottomRight: Vector3,
 	Rays: {[number]: Ray},
 	Planes: {[string]: Plane},
+	GetBlockShadow: (self: Frustum, cf: CFrame, size: Vector3) -> {[number]: Triangle},
 	GetViewportPosition: (self: Frustum, point: Vector3) -> (Vector3, boolean),
 	_GetIfPointIsCloseEnough: (self: Frustum, point: Vector3) -> boolean,
 	GetIfPointRendered: (self: Frustum, point: Vector3) -> boolean,
@@ -244,6 +251,33 @@ function Frustum:GetIfRayRendered(ray: Ray): boolean
 	return false
 end
 
+function Frustum:GetBlockShadow(cf: CFrame, size: Vector3): {[number]: Triangle}
+	local worldTriangles = BlockInfo.getWorldTriangles(cf, size, self.CFrame.Position)
+	local triangles: {[number]: Triangle} = {}
+	
+	for i, tri in ipairs(worldTriangles) do
+		local a, _ = self:GetViewportPosition(tri.A)
+		local b, _ = self:GetViewportPosition(tri.B)
+		local c, _ = self:GetViewportPosition(tri.A)
+		triangles[i] = {
+			A = Vector2.new(
+				math.round(a.X),
+				math.round(a.Y)
+			),
+			B = Vector2.new(
+				math.round(b.X),
+				math.round(b.Y)
+			),
+			C = Vector2.new(
+				math.round(c.X),
+				math.round(c.Y)
+			),
+		}
+	end
+
+	return triangles
+end
+
 function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
 	local min = Vector2.new(math.huge, math.huge)
 	local max = -Vector2.new(math.huge, math.huge)
@@ -293,6 +327,7 @@ function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
 		local s4, _ = self:GetViewportPosition(c4)
 		compare(s4)
 	end
+
 
 	return Rect.new(min, max)
 end

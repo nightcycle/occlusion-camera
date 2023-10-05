@@ -9,10 +9,11 @@ local Maid = require(_Packages:WaitForChild("Maid"))
 local Config = require(_Package:WaitForChild("Config"))
 -- Types
 -- Constants
-local FIELD_OF_VIEW = 55
 local MAX_RENDER_DISTANCE = 2048
 local PERFORMANCE_TEST = false -- disables rendering visuals but gives actual performance results
 local USE_REAL_CAMERA = false
+local FIELD_OF_VIEW = if USE_REAL_CAMERA then workspace.CurrentCamera.FieldOfView else 55
+
 -- Variables
 -- References
 -- Class
