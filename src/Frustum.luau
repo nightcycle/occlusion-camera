@@ -10,7 +10,8 @@ local Draw = require(_Packages:WaitForChild("Draw"))
 
 -- Modules
 local Config = require(_Package:WaitForChild("Config"))
-local BlockInfo = require(_Package:WaitForChild("BlockInfo"))
+local PerspectiveUtil = require(_Package:WaitForChild("PerspectiveUtil"))
+local ShapeUtil = require(_Package:WaitForChild("ShapeUtil"))
 
 -- Types
 export type Plane = {
@@ -59,6 +60,7 @@ export type Frustum = {
 	Rays: {[number]: Ray},
 	Planes: {[string]: Plane},
 	GetBlockShadow: (self: Frustum, cf: CFrame, size: Vector3) -> {[number]: Triangle},
+	GetProjectedShape: (self: Frustum, cf: CFrame, size: Vector3) -> {[number]: Vector2},
 	GetViewportPosition: (self: Frustum, point: Vector3) -> (Vector3, boolean),
 	_GetIfPointIsCloseEnough: (self: Frustum, point: Vector3) -> boolean,
 	GetIfPointRendered: (self: Frustum, point: Vector3) -> boolean,
@@ -70,6 +72,7 @@ export type Frustum = {
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
 	GetIfPartRendered: (self: Frustum, part: BasePart) -> boolean,
 	GetOuterBlockBounds: (self: Frustum, cf: CFrame, size: Vector3) -> Rect,
+	GetInnerBlockBounds: (self: Frustum, cf: CFrame, size: Vector3) -> Rect,
 	Draw: (self: Frustum) -> Folder,
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
@@ -252,13 +255,13 @@ function Frustum:GetIfRayRendered(ray: Ray): boolean
 end
 
 function Frustum:GetBlockShadow(cf: CFrame, size: Vector3): {[number]: Triangle}
-	local worldTriangles = BlockInfo.getWorldTriangles(cf, size, self.CFrame.Position)
+	local worldTriangles = PerspectiveUtil.getWorldTriangles(cf, size, self.CFrame.Position)
 	local triangles: {[number]: Triangle} = {}
 	
 	for i, tri in ipairs(worldTriangles) do
 		local a, _ = self:GetViewportPosition(tri.A)
 		local b, _ = self:GetViewportPosition(tri.B)
-		local c, _ = self:GetViewportPosition(tri.A)
+		local c, _ = self:GetViewportPosition(tri.C)
 		triangles[i] = {
 			A = Vector2.new(
 				math.round(a.X),
@@ -278,58 +281,25 @@ function Frustum:GetBlockShadow(cf: CFrame, size: Vector3): {[number]: Triangle}
 	return triangles
 end
 
+function Frustum:GetProjectedShape(cf: CFrame, size: Vector3): {[number]: Vector2}
+	local shape: {[number]: Vector2} = {}
+	for i, v in ipairs(PerspectiveUtil.getWorldPerimeter(cf, size, self.CFrame.Position)) do
+		local s, _ = self:GetViewportPosition(v)
+		table.insert(shape, Vector2.new(
+			math.round(s.X),
+			math.round(s.Y)
+		))
+	end
+	return shape
+end
+
 function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
-	local min = Vector2.new(math.huge, math.huge)
-	local max = -Vector2.new(math.huge, math.huge)
+	return ShapeUtil.getBounds(self:GetProjectedShape(cf, size))
+end
 
-	local function compare(v: Vector3)
-		if v.X < min.X then
-			min = Vector2.new(v.X, min.Y)
-		end
-		if v.Y < min.Y then
-			min = Vector2.new(min.X, v.Y)
-		end
-		if v.X > max.X then
-			max = Vector2.new(v.X, max.Y)
-		end
-		if v.Y > max.Y then
-			max = Vector2.new(max.X, v.Y)
-		end
-	end
-
-	local lVec = self.CFrame.LookVector
-	for i, vectors in ipairs({
-		{cf.RightVector * size.X, -cf.LookVector * size.Z, cf.UpVector * size.Y},
-		{cf.UpVector * size.Y, cf.RightVector * size.X, -cf.LookVector * size.Z},
-		{-cf.LookVector * size.Z, cf.RightVector * size.X, cf.UpVector * size.Y}
-	}) do
-		local xVec = vectors[2]
-		local yVec = vectors[3]
-
-		local zVec = vectors[1]
-		if zVec:Dot(lVec) > 0 then
-			zVec *= -1
-		end
-		local position = cf.Position + zVec / 2
-
-		local c1 = position + (xVec/2) + (yVec/2)
-		local s1, _ = self:GetViewportPosition(c1)
-		compare(s1)
-		local c2 = position - (xVec/2) + (yVec/2)
-		local s2, _ = self:GetViewportPosition(c2)
-		compare(s2)
-
-		local c3 = position + (xVec/2) - (yVec/2)
-		local s3, _ = self:GetViewportPosition(c3)
-		compare(s3)
-
-		local c4 = position - (xVec/2) - (yVec/2)
-		local s4, _ = self:GetViewportPosition(c4)
-		compare(s4)
-	end
-
-
-	return Rect.new(min, max)
+function Frustum:GetInnerBlockBounds(cf: CFrame, size: Vector3): Rect
+	return self:GetOuterBlockBounds(cf, size)
+	-- return ShapeUtil.getLargestRectWithinConvexShape(self:GetProjectedShape(cf, size))
 end
 
 function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean

@@ -12,8 +12,8 @@ type CornerId = "XYZ" | "xYZ" | "XYz" | "xYz" | "XyZ" | "xyZ" | "Xyz" | "xyz"
 type EdgeId = "YZ" | "Yz" | "yZ" |  "yz" | "XZ" | "xZ" | "Xz" | "xz" | "XY" | "xY" | "Xy" | "xy"
 type FaceId = "X" | "x" | "Y" | "y" | "Z" | "z"
 type PerspectiveId = CornerId | EdgeId | FaceId
--- Constants
 
+-- Constants
 local TRIANGLE_DATA: {[PerspectiveId]: {[number]: {[number]: CornerId}}} = {
 	X = {
 		{"Xyz", "XYz", "XYZ"},
@@ -252,6 +252,7 @@ function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraPosition: Vecto
 	local triangles: {[number]: {A: Vector3, B: Vector3, C: Vector3}} = {}
 
 	local centerId: PerspectiveId = getCenterId(cf, size, cameraPosition)
+	if centerId:len() == 0 then return {} end
 
 	local function addTriangle(aId: CornerId, bId: CornerId, cId: CornerId)
 		local a = getWorldPosition(cf, size, aId)
@@ -281,8 +282,10 @@ end
 function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraPosition: Vector3): {[number]: Vector3}
 
 	local centerId: PerspectiveId = getCenterId(cf, size, cameraPosition)
+	if centerId:len() == 0 then return {} end
 
 	local perimeterData = PERIMETER_DATA[centerId]
+	assert(perimeterData, `bad perimeter: {centerId}`)
 
 	local perimeter: {[number]: Vector3} = {}
 
