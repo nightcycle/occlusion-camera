@@ -4,70 +4,17 @@ local _Package = script.Parent
 local _Packages = _Package.Parent
 
 -- Services
-local Debris = game:GetService("Debris")
-local TouchInputService = game:GetService("TouchInputService")
-
 -- Packages
-local TableUtil = require(_Packages:WaitForChild("TableUtil"))
-local Draw = require(_Packages:WaitForChild("Draw"))
-local MeshUtil = require(_Packages:WaitForChild("MeshUtil"))
 
 -- Modules
 -- Types
 type CornerId = "XYZ" | "xYZ" | "XYz" | "xYz" | "XyZ" | "xyZ" | "Xyz" | "xyz"
 type EdgeId = "YZ" | "Yz" | "yZ" |  "yz" | "XZ" | "xZ" | "Xz" | "xz" | "XY" | "xY" | "Xy" | "xy"
 type FaceId = "X" | "x" | "Y" | "y" | "Z" | "z"
+type PerspectiveId = CornerId | EdgeId | FaceId
 -- Constants
-local CORNER_TO_NORMAL_ID: {[string]: Enum.NormalId} = {
-	X = Enum.NormalId.Right,
-	x = Enum.NormalId.Left,
-	y = Enum.NormalId.Bottom,
-	Y = Enum.NormalId.Top,
-	z = Enum.NormalId.Front,
-	Z = Enum.NormalId.Back,
-}
 
-
-local SURFACE_CORNERS: {[Enum.NormalId]: {[number]: CornerId}} = {
-	[Enum.NormalId.Right] = {
-		"XYZ", 
-		"XYz", 
-		"XyZ",
-		"Xyz"
-	},
-	[Enum.NormalId.Left] = {
-		"xYZ", 
-		"xYz", 
-		"xyZ",
-		"xyz"
-	},
-	[Enum.NormalId.Top] = {
-		"XYZ", 
-		"xYZ", 
-		"XYz",
-		"xYz"
-	},
-	[Enum.NormalId.Bottom] = {
-		"XyZ", 
-		"xyZ", 
-		"Xyz",
-		"xyz"
-	},
-	[Enum.NormalId.Back] = {
-		"XYZ", 
-		"xYZ", 
-		"XyZ",
-		"xyZ"
-	},
-	[Enum.NormalId.Front] = {
-		"XYz", 
-		"xYz", 
-		"Xyz",
-		"xyz"
-	},
-}
-
-local FACE_TRIANGLE_DATA: {[FaceId]: {[number]: {[number]: CornerId}}} = {
+local TRIANGLE_DATA: {[PerspectiveId]: {[number]: {[number]: CornerId}}} = {
 	X = {
 		{"Xyz", "XYz", "XYZ"},
 		{"Xyz", "XyZ", "XYZ"},
@@ -92,18 +39,6 @@ local FACE_TRIANGLE_DATA: {[FaceId]: {[number]: {[number]: CornerId}}} = {
 		{"xyz", "xyZ", "XyZ"},
 		{"xyz", "Xyz", "XyZ"},
 	},
-}
-
-local FACE_PERIMETER_DATA: {[FaceId]: {[number]: CornerId}} = {
-	X = {"Xyz", "XYz", "XYZ", "XyZ"},
-	x = {"xyz", "xYz", "xYZ", "xyZ"},
-	Y = {"xYz", "XYz", "XYZ", "xYZ"},
-	y = {"xyz", "Xyz", "XyZ", "xyZ"},
-	Z = {"xyZ", "XyZ", "XYZ", "xYZ"},
-	z = {"xyz", "Xyz", "XYz", "xYz"},
-}
-
-local EDGE_TRIANGLE_DATA: {[EdgeId]: {[number]: {[number]: CornerId}}} = {
 	Xy = {
 		{"Xyz", "xyz", "xyZ"},
 		{"Xyz", "XYz", "XYZ"},
@@ -136,7 +71,7 @@ local EDGE_TRIANGLE_DATA: {[EdgeId]: {[number]: {[number]: CornerId}}} = {
 	},
 	XZ = {
 		{"XyZ", "xyZ", "xYZ"},
-		{"XyZ", "XyZ", "XYz"},
+		{"XyZ", "Xyz", "XYz"},
 		{"XYZ", "xYZ", "XYz"},
 		{"XyZ", "xYZ", "XYz"},
 	},
@@ -176,10 +111,64 @@ local EDGE_TRIANGLE_DATA: {[EdgeId]: {[number]: {[number]: CornerId}}} = {
 		{"XyZ", "XYZ", "Xyz"},
 		{"xyZ", "XYZ", "Xyz"},
 	},
+	XYZ = {
+		{"xYZ", "XyZ", "XYz"},
+		{"xYZ", "xyZ", "XyZ"},
+		{"XyZ", "Xyz", "XYz"},
+		{"XYz", "xYz", "xYZ"},
+	},
+	xYZ = {
+		{"XYZ", "xyZ", "xYz"},
+		{"XYZ", "XyZ", "xyZ"},
+		{"xyZ", "xyz", "xYz"},
+		{"xYz", "XYz", "XYZ"},
+	},
+	XyZ = {
+		{"xyZ", "XYZ", "Xyz"},
+		{"xyZ", "xYZ", "XYZ"},
+		{"XYZ", "XYz", "Xyz"},
+		{"Xyz", "xyz", "xyZ"},
+	},
+	xyZ = {
+		{"XyZ", "xYZ", "xyz"},
+		{"XyZ", "XYZ", "xYZ"},
+		{"xYZ", "xYz", "xyz"},
+		{"xyz", "Xyz", "XyZ"},
+	},
+	XYz = {
+		{"xYz", "Xyz", "XYZ"},
+		{"xYz", "xyz", "Xyz"},
+		{"Xyz", "XyZ", "XYZ"},
+		{"XYZ", "xYZ", "xYz"},
+	},
+	xYz = {
+		{"XYz", "xyz", "xYZ"},
+		{"XYz", "Xyz", "xyz"},
+		{"xyz", "xyZ", "xYZ"},
+		{"xYZ", "XYZ", "XYz"},
+	},
+	Xyz = {
+		{"xyz", "XYz", "XyZ"},
+		{"xyz", "xYz", "XYz"},
+		{"XYz", "XYZ", "XyZ"},
+		{"XyZ", "xyZ", "xyz"},
+	},
+	xyz = {
+		{"Xyz", "xYz", "xyZ"},
+		{"Xyz", "XYz", "xYz"},
+		{"xYz", "xYZ", "xyZ"},
+		{"xyZ", "XyZ", "Xyz"},
+	},
 }
 
+local PERIMETER_DATA: {[PerspectiveId]: {[number]: CornerId}} = {
+	X = {"Xyz", "XYz", "XYZ", "XyZ"},
+	x = {"xyz", "xYz", "xYZ", "xyZ"},
+	Y = {"xYz", "XYz", "XYZ", "xYZ"},
+	y = {"xyz", "Xyz", "XyZ", "xyZ"},
+	Z = {"xyZ", "XyZ", "XYZ", "xYZ"},
+	z = {"xyz", "Xyz", "XYz", "xYz"},
 
-local EDGE_PERIMETER_DATA: {[EdgeId]: {[number]: CornerId}} = {
 	Xy = {"Xyz", "xyz", "xyZ", "XyZ", "XYZ", "XYz"},
 	XY = {"XYz", "xYz", "xYZ", "XYZ", "XyZ", "Xyz"},
 	xY = {"xYz", "XYz", "XYZ", "xYZ", "xyZ", "xyz"},
@@ -195,169 +184,33 @@ local EDGE_PERIMETER_DATA: {[EdgeId]: {[number]: CornerId}} = {
 	yZ = {"xyZ", "xYZ", "XYZ", "XyZ", "Xyz", "xyz"},
 	yz = {"xyz", "xYz", "XYz", "Xyz", "XyZ", "xyZ"},
 
+	XYZ = {"xYZ", "xyZ", "XyZ", "Xyz", "XYz", "xYz"},
+	XYz = {"xYz", "xyz", "Xyz", "XyZ", "XYZ", "xYZ"},
+	XyZ = {"xyZ", "xYZ", "XYZ", "XYz", "Xyz", "xyz"},
+	Xyz = {"xyz", "xYz", "XYz", "XYZ", "XyZ", "xyZ"},
+
+	xYZ = {"XYZ", "XyZ", "xyZ", "xyz", "xYz", "XYz"},
+	xYz = {"XYz", "Xyz", "xyz", "xyZ", "xYZ", "XYZ"},
+	xyZ = {"XyZ", "XYZ", "xYZ", "xYz", "xyz", "Xyz"},
+	xyz = {"Xyz", "XYz", "xYz", "xYZ", "xyZ", "XyZ"},
 }
 
+local CORNER_OFFSET: {[CornerId]: Vector3} = {
+	XYZ = 0.5*(Vector3.fromAxis(Enum.Axis.X) + Vector3.fromAxis(Enum.Axis.Y) + Vector3.fromAxis(Enum.Axis.Z)),
+	XYz = 0.5*(Vector3.fromAxis(Enum.Axis.X) + Vector3.fromAxis(Enum.Axis.Y) - Vector3.fromAxis(Enum.Axis.Z)),
+	XyZ = 0.5*(Vector3.fromAxis(Enum.Axis.X) - Vector3.fromAxis(Enum.Axis.Y) + Vector3.fromAxis(Enum.Axis.Z)),
+	Xyz = 0.5*(Vector3.fromAxis(Enum.Axis.X) - Vector3.fromAxis(Enum.Axis.Y) - Vector3.fromAxis(Enum.Axis.Z)),
 
-type CornerInfo = {
-	Offset: Vector3,
-	EdgeTriangles: {
-		[number]: {
-			Opp: CornerId,
-			Edge1: CornerId,
-			Edge2: CornerId
-		}
-	},
-	CenterTriangle: {
-		A: CornerId,
-		B: CornerId,
-		C: CornerId
-	},
-	Perimeter: {
-		A: CornerId,
-		B: CornerId,
-		C: CornerId,
-		D: CornerId,
-		E: CornerId,
-		F: CornerId,
-	},
-}
-
-local CORNER_INFO: {[CornerId]: CornerInfo} = {}
-
-for _, x in ipairs({"X", "x"}) do
-
-	local xNormalId = CORNER_TO_NORMAL_ID[x]
-	assert(xNormalId)
-	local xVec = Vector3.fromNormalId(xNormalId)
-
-	for _, y in ipairs({"Y", "y"}) do
-
-		local yNormalId = CORNER_TO_NORMAL_ID[y]
-		assert(yNormalId)
-		local yVec = Vector3.fromNormalId(yNormalId)
-
-		for _, z in ipairs({"Z", "z"}) do
-
-			local zNormalId = CORNER_TO_NORMAL_ID[z]
-			assert(zNormalId)
-			local zVec = Vector3.fromNormalId(zNormalId)
-
-			local id = `{x}{y}{z}` :: CornerId
-			
-			CORNER_INFO[id :: CornerId] = {
-				Offset = (xVec + yVec + zVec)/2,
-				EdgeTriangles = {},
-				CenterTriangle = {},
-				Perimeter = {},
-			} :: any
-
-			local finalTriangle: {[CornerId]: true} = {}
-
-			for nId, cornerList in pairs(SURFACE_CORNERS) do
-				if table.find(cornerList, id) then
-					local edges: {[number]: CornerId} = {}
-					local opp: CornerId
-					for j, corner in ipairs(cornerList) do
-						local cX = corner:sub(1,1)
-						local cY = corner:sub(2,2)
-						local cZ = corner:sub(3,3)
-						local similarityCount = 0
-						if cX == x then
-							similarityCount += 1
-						end
-						if cY == y then
-							similarityCount += 1
-						end
-						if cZ == z then
-							similarityCount += 1
-						end
-						if similarityCount ~= 3 then
-							if similarityCount == 1 then --opposite
-								opp = corner :: CornerId
-							else
-								table.insert(edges, corner)
-							end
-						end
-					end
-					local edge1 = edges[1]
-					local edge2 = edges[2]
-					assert(edge1 and edge2, `bad edges`)
-					table.insert(CORNER_INFO[id :: CornerId].EdgeTriangles,{
-						Opp = opp :: CornerId,
-						Edge1 = edge1 :: CornerId,
-						Edge2 = edge2 :: CornerId,
-					})
-					finalTriangle[edge1 :: CornerId] = true
-					finalTriangle[edge2 :: CornerId] = true
-				end
-			end
-			do
-				local vertices = TableUtil.keys(finalTriangle)
-
-				local a,b,c = vertices[1], vertices[2], vertices[3]
-				assert(a and b and c)
-
-				CORNER_INFO[id :: CornerId].CenterTriangle = {
-					A = a :: CornerId,
-					B = b :: CornerId,
-					C = c :: CornerId,
-				}
-
-				local function getConnectingCorner(c1: CornerId, c2: CornerId): CornerId
-					for k, v in pairs(CORNER_INFO[id :: CornerId].EdgeTriangles) do
-						if v.Edge1 == c1 and v.Edge2 == c2 then
-							return v.Opp
-						elseif v.Edge1 == c2 and v.Edge2 == c1 then
-							return v.Opp
-						end
-					end
-					error(`invalid pairing: {c1}, {c2}`)
-				end
-
-				CORNER_INFO[id :: CornerId].Perimeter = {
-					A = a :: CornerId,
-					B = getConnectingCorner(a :: CornerId, b :: CornerId),
-					C = b :: CornerId,
-					D = getConnectingCorner(b :: CornerId, c :: CornerId),
-					E = c :: CornerId,
-					F = getConnectingCorner(c :: CornerId, a :: CornerId)
-				}
-
-			end
-		end
-	end
-end
-
-
-type EdgeInfo = {
-	Position: Vector3,
-	Axis: Vector3,
-	EdgeTriangles: {
-		[number]: {
-			Opp: CornerId,
-			Edge1: CornerId,
-			Edge2: CornerId
-		}
-	},
-	CenterTriangle: {
-		A: CornerId,
-		B: CornerId,
-		C: CornerId
-	},
-	Perimeter: {
-		A: CornerId,
-		B: CornerId,
-		C: CornerId,
-		D: CornerId,
-		E: CornerId,
-		F: CornerId,
-	},
+	xYZ = 0.5*(-Vector3.fromAxis(Enum.Axis.X) + Vector3.fromAxis(Enum.Axis.Y) + Vector3.fromAxis(Enum.Axis.Z)),
+	xYz = 0.5*(-Vector3.fromAxis(Enum.Axis.X) + Vector3.fromAxis(Enum.Axis.Y) - Vector3.fromAxis(Enum.Axis.Z)),
+	xyZ = 0.5*(-Vector3.fromAxis(Enum.Axis.X) - Vector3.fromAxis(Enum.Axis.Y) + Vector3.fromAxis(Enum.Axis.Z)),
+	xyz = 0.5*(-Vector3.fromAxis(Enum.Axis.X) - Vector3.fromAxis(Enum.Axis.Y) - Vector3.fromAxis(Enum.Axis.Z)),
 }
 
 -- Variables
 -- References
 -- Private Functions
-function getCenterId(cf: CFrame, size: Vector3, cameraPosition: Vector3): string
+function getCenterId(cf: CFrame, size: Vector3, cameraPosition: Vector3): PerspectiveId
 	local offset = cf:PointToObjectSpace(cameraPosition)
 	local x: string, y: string, z: string
 	if offset.X < 0 then
@@ -384,12 +237,11 @@ function getCenterId(cf: CFrame, size: Vector3, cameraPosition: Vector3): string
 	if math.abs(offset.Z) <= size.Z * 0.5 then
 		z = ""
 	end
-	return `{x}{y}{z}`
+	return `{x}{y}{z}` :: PerspectiveId
 end
 
 function getWorldPosition(cf: CFrame, size: Vector3, cornerId: CornerId): Vector3
-	local cornerInfo = CORNER_INFO[cornerId]
-	local offset = cornerInfo.Offset * size
+	local offset = CORNER_OFFSET[cornerId] * size
 	return cf:PointToWorldSpace(offset)
 end
 
@@ -399,31 +251,13 @@ local Util = {}
 function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraPosition: Vector3): {[number]: {A: Vector3, B: Vector3, C: Vector3}}
 	local triangles: {[number]: {A: Vector3, B: Vector3, C: Vector3}} = {}
 
-	local centerId: string = getCenterId(cf, size, cameraPosition)
+	local centerId: PerspectiveId = getCenterId(cf, size, cameraPosition)
 
 	local function addTriangle(aId: CornerId, bId: CornerId, cId: CornerId)
 		local a = getWorldPosition(cf, size, aId)
 		local b = getWorldPosition(cf, size, bId)
 		local c = getWorldPosition(cf, size, cId)
-		-- Debris:AddItem(Draw.vector(a, b-a, Color3.new(1,0,0), nil, 0.5))
-		-- Debris:AddItem(Draw.vector(b, c-b, Color3.new(0,1,0), nil, 0.5))
-		-- Debris:AddItem(Draw.vector(c, a-c, Color3.new(0,0,1), nil, 0.5))
 
-		local center = (a:Lerp(b, 0.5):Lerp(c, 0.33))
-		local seed = center.X * 2 + center.Y * 5 + center.Z * 15
-		local rng = Random.new(seed)
-		local color = Color3.fromHSV(rng:NextNumber() , 1, 1)
-		local w1, w2 = MeshUtil.renderTriangle(a,b,c, 0.05)
-		w1.Color = color
-		w2.Color = color
-		w1.CastShadow = false
-		w2.CastShadow = false
-		w1.Archivable = false
-		w2.Archivable = false
-		w1.Parent = workspace
-		w2.Parent = workspace
-		Debris:AddItem(w1, 1/60)
-		Debris:AddItem(w2, 1/60)
 		table.insert(triangles, {
 			A = a,
 			B = b,
@@ -431,38 +265,14 @@ function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraPosition: Vecto
 		})
 	end
 
-	local cornerInfo = CORNER_INFO[centerId :: CornerId]
-	if cornerInfo then
-		for i, edgeTriangle in ipairs(cornerInfo.EdgeTriangles) do
-			addTriangle(edgeTriangle.Edge1, edgeTriangle.Opp, edgeTriangle.Edge2)
-			-- break
-		end
-	
-		addTriangle(cornerInfo.CenterTriangle.A, cornerInfo.CenterTriangle.B, cornerInfo.CenterTriangle.C)
-	
-	else
-		local edgeInfo = EDGE_TRIANGLE_DATA[centerId :: EdgeId]
-		if edgeInfo then
-			for j, triangle in ipairs(edgeInfo) do
-				addTriangle(
-					triangle[1] :: CornerId, 
-					triangle[2] :: CornerId, 
-					triangle[3] :: CornerId
-				)
-	
-			end
-		else
-			local faceInfo = FACE_TRIANGLE_DATA[centerId :: FaceId]
-			for j, triangle in ipairs(faceInfo) do
-				addTriangle(
-					triangle[1] :: CornerId, 
-					triangle[2] :: CornerId, 
-					triangle[3] :: CornerId
-				)
-	
-			end
+	local triangleData = TRIANGLE_DATA[centerId]
 
-		end
+	for j, triangle in ipairs(triangleData) do
+		addTriangle(
+			triangle[1] :: CornerId, 
+			triangle[2] :: CornerId, 
+			triangle[3] :: CornerId
+		)
 
 	end
 
@@ -470,45 +280,18 @@ function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraPosition: Vecto
 end
 function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraPosition: Vector3): {[number]: Vector3}
 
-	local centerId: string = getCenterId(cf, size, cameraPosition)
+	local centerId: PerspectiveId = getCenterId(cf, size, cameraPosition)
 
-	local cornerInfo = CORNER_INFO[centerId :: CornerId]
-	if cornerInfo then
-		local perimeter = {
-			getWorldPosition(cf, size, cornerInfo.Perimeter.A),
-			getWorldPosition(cf, size, cornerInfo.Perimeter.B),
-			getWorldPosition(cf, size, cornerInfo.Perimeter.C),
-			getWorldPosition(cf, size, cornerInfo.Perimeter.D),
-			getWorldPosition(cf, size, cornerInfo.Perimeter.E),
-			getWorldPosition(cf, size, cornerInfo.Perimeter.F),
-		} :: any
-	
-		return perimeter
-	else
-		local edgeInfo = EDGE_PERIMETER_DATA[centerId :: EdgeId]
-		if edgeInfo then
-			local perimeter = {
-				getWorldPosition(cf, size, edgeInfo[1]),
-				getWorldPosition(cf, size, edgeInfo[2]),
-				getWorldPosition(cf, size, edgeInfo[3]),
-				getWorldPosition(cf, size, edgeInfo[4]),
-				getWorldPosition(cf, size, edgeInfo[5]),
-				getWorldPosition(cf, size, edgeInfo[6]),
-			}
-	
-			return perimeter
-		else
-			local faceInfo = FACE_PERIMETER_DATA[centerId :: FaceId]
-			local perimeter = {
-				getWorldPosition(cf, size, faceInfo[1]),
-				getWorldPosition(cf, size, faceInfo[2]),
-				getWorldPosition(cf, size, faceInfo[3]),
-				getWorldPosition(cf, size, faceInfo[4])
-			}
+	local perimeterData = PERIMETER_DATA[centerId]
 
-			return perimeter
-		end
+	local perimeter: {[number]: Vector3} = {}
+
+	for j, cornerId in ipairs(perimeterData) do
+
+		table.insert(perimeter, getWorldPosition(cf, size, cornerId :: CornerId))
 
 	end
+
+	return perimeter
 end
 return Util
