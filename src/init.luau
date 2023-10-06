@@ -388,7 +388,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						measurements[part.Name] = measurements[part.Name] or {}
 
 						local start = tick()
-						rTree:Add(rect, part)
+						rTree:AddIfUnique(rect, part)
 						local finish = tick()
 
 						table.insert(measurements[part.Name], finish - start)
@@ -449,15 +449,13 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				-- 		do
 				-- 			local start = tick()
 
-				-- 			local hits = rTree:Search(rect)
+				-- 			local hits = rTree:SearchUniqueOnly(rect)
 
-				-- 			local isObscured = false
+				-- 			local isObscured = true
 				-- 			do
 				-- 				for i, hit in ipairs(hits) do
 				-- 					if hit == part then
-				-- 						if i ~= 1 then
-				-- 							isObscured = true
-				-- 						end
+				-- 						isObscured = false
 				-- 						break
 				-- 					end
 				-- 				end
@@ -466,12 +464,12 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				-- 			print(`h: {#hits} = {isObscured}`)
 				-- 			local finish = tick()
 				-- 			-- local shape = partShapeRegistry[part]
-				-- 			local color = if isObscured then Color3.new(0,0,1) else Color3.new(1,0,0)
+				-- 			local color = if isObscured then Color3.new(0,0,1) else Color3.new(1,1,1)
 				-- 			if DEBUG_OCCLUSION and not NO_DEBUG_RENDER then
 				-- 				do
 				-- 					local frame = Instance.new("Frame")
 				-- 					frame.BackgroundTransparency = 0.7
-				-- 					frame.ZIndex = 10
+				-- 					frame.ZIndex = 10^6 - (rect.Width * rect.Height)
 				-- 					frame.BackgroundColor3 =  color
 				-- 					frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
 				-- 					frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
