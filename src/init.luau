@@ -10,13 +10,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ShapeUtil = require(ReplicatedStorage.Packages.package.ShapeUtil)
 local Maid = require(_Packages:WaitForChild("Maid"))
 local Signal = require(_Packages:WaitForChild("Signal"))
-local RTree = require(_Package:WaitForChild("RTree"))
 local Draw = require(_Packages:WaitForChild("Draw"))
 local TableUtil = require(_Packages:WaitForChild("TableUtil"))
 
 -- Modules
+local RTree = require(_Package:WaitForChild("RTree"))
 local Config = require(_Package:WaitForChild("Config"))
 local Frustum = require(_Package:WaitForChild("Frustum"))
+local Mask = require(_Package:WaitForChild("Mask"))
 
 -- Types
 -- Constants
@@ -35,63 +36,14 @@ local RENDER_DURATION = 0.5/60
 -- Private Functions
 
 -- https://github.com/EgoMoose/Articles/blob/master/2d%20triangles/2d%20triangles.md
-function drawTriangle(
-	a: Vector2, 
-	b: Vector2, 
-	c: Vector2
-): (ImageLabel, ImageLabel)
-	local HALF = Vector2.new(0.5, 0.5);
-	
-	local RIGHT = "rbxassetid://319692151";
-	local LEFT = "rbxassetid://319692171";
 
-	local ab, ac, bc = b - a, c - a, c - b;
-	local abd, acd, bcd = ab:Dot(ab), ac:Dot(ac), bc:Dot(bc);
-	
-	if (abd > acd and abd > bcd) then
-		c, a = a, c;
-	elseif (acd > bcd and acd > abd) then
-		a, b = b, a;
-	end
-	
-	ab, ac, bc = b - a, c - a, c - b;
-	
-	local unit = bc.Unit;
-	local height = unit:Cross(ab);
-	local flip = (height >= 0);
-	local theta = math.deg(math.atan2(unit.Y, unit.X)) + (flip and 0 or 180);
-	
-	local m1 = (a + b)/2;
-	local m2 = (a + c)/2;
-
-	local w1 = Instance.new("ImageLabel");
-	w1.BackgroundTransparency = 1;
-	w1.AnchorPoint = HALF;
-	w1.BorderSizePixel = 0;
-	w1.Image = flip and RIGHT or LEFT;
-	w1.AnchorPoint = HALF;
-	w1.Size = UDim2.new(0, math.abs(unit:Dot(ab)), 0, height);
-	w1.Position = UDim2.fromOffset(m1.X, m1.Y);
-	w1.Rotation = theta;
-	
-	local w2 = Instance.new("ImageLabel"); 		
-	w2.BackgroundTransparency = 1;
-	w2.AnchorPoint = HALF;
-	w2.BorderSizePixel = 0;
-	w2.Image = flip and LEFT or RIGHT;
-	w2.AnchorPoint = HALF;
-	w2.Size = UDim2.new(0, math.abs(unit:Dot(ac)), 0, height);
-	w2.Position = UDim2.fromOffset(m2.X, m2.Y);
-	w2.Rotation = theta;
-	
-	return w1, w2;
-end
 -- Class
 -- Types
 type Signal = Signal.Signal
 type Maid = Maid.Maid
 type Frustum = Frustum.Frustum
 type RTree<T> = RTree.RTree<T>
+type Mask<T> = Mask.Mask<T>
 type Directory<T> = RTree.Directory<T>
 export type OcclusionCamera = {
 	__index: OcclusionCamera,
@@ -259,6 +211,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			return math.round(1000*10000*v)/10000
 		end
 
+
 		if DEBUG_CULLING then
 			local debugInstances: {[number]: Instance} = workspace:WaitForChild("Map"):GetChildren()
 			self._Maid:GiveTask(function()
@@ -311,6 +264,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 
 			end))
 		else
+
 			local parts: {[number]: BasePart} = workspace:WaitForChild("SmallerMap"):GetChildren() :: any
 			for i, part in ipairs(parts) do
 				assert(part:IsA("BasePart"), `inst {part:GetFullName()} isn't a basePart`)
@@ -331,9 +285,10 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				local partRectRegistry: {[BasePart]: Rect} = {}
 				local partShapeRegistry: {[BasePart]: {[number]: Vector2}} = {}
 				local partAreaRegistry: {[BasePart]: number} = {}
+				local partDistanceRegistry: {[BasePart]: number} = {}
 				local visiblePartList: {[number]: BasePart} = {}
 
-				local rTree = RTree.new() :: RTree<BasePart>
+				local mask = Mask.new() :: Mask<BasePart>
 
 				do
 					local measurements: {[string]: {[number]: number}} = {}
@@ -348,6 +303,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 							partAreaRegistry[part] = rect.Width * rect.Height
 							partRectRegistry[part] = rect
 							partShapeRegistry[part] = shape
+							partDistanceRegistry[part] = (part.CFrame.Position - self.Instance.CFrame.Position).Magnitude
 							table.insert(visiblePartList, part)
 							local finish = tick()				
 
@@ -388,7 +344,14 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						measurements[part.Name] = measurements[part.Name] or {}
 
 						local start = tick()
-						rTree:AddIfUnique(rect, part)
+
+						mask:Register(
+							part,
+							rect,
+							partShapeRegistry[part],
+							self.MaxRenderDistance - partDistanceRegistry[part],
+							true
+						)
 						local finish = tick()
 
 						table.insert(measurements[part.Name], finish - start)
@@ -414,31 +377,79 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						self.Instance:SetAttribute(`add_net_ms`, toMilliseconds(netDuration))
 						self.Instance:SetAttribute(`add_net_limit`, math.floor(RENDER_DURATION/netDuration))
 					end
+
 				end
 
 				do
-					local function debugTree(dir: Directory<BasePart>, depth: number)
-						if depth > 0 then
+					local measurements: {[string]: {[number]: number}} = {}
+
+					for part, rect in pairs(partRectRegistry) do
+						measurements[part.Name] = measurements[part.Name] or {}
+
+						local start = tick()
+						local isOccluded = mask:GetIfOccluded(part)
+
+						local finish = tick()
+
+						do
 							local frame = Instance.new("Frame")
-							frame.BackgroundTransparency = 0.8
-							frame.ZIndex = depth + 5
-							frame.BackgroundColor3 = Color3.fromHSV(
-								if depth == 1 then 0 else 0.5,
-								1, --1/depth,
-								1
-							)
-							frame.BorderSizePixel = 3
-							frame.Position = UDim2.fromOffset(dir.Region.Min.X, dir.Region.Min.Y)
-							frame.Size = UDim2.fromOffset(dir.Region.Width, dir.Region.Height)
-	
+							frame.BackgroundTransparency = if not isOccluded then 0.8 else 0.2
+							frame.ZIndex = self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
+							frame.BackgroundColor3 =  if not isOccluded then Color3.new(0, 1, 1) else Color3.new(1,0,0)
+							frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
+							frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
 							frame.Parent = screen
 						end
-						for k, v in pairs(dir.SubDirectories) do
-							debugTree(v, depth+1)
-						end
+
+						table.insert(measurements[part.Name], finish - start)
 					end
-					debugTree(rTree._Master, 0)
+		
+					do
+						local netSum = 0
+						local netCount = 0
+						for k, vList in pairs(measurements) do
+							local sum = 0
+							local count = #vList
+							for i, v in ipairs(vList) do
+								sum += v
+							end
+							netSum += sum
+							netCount += count
+							local duration = sum/count
+							self.Instance:SetAttribute(`_search_{k}_ms`, toMilliseconds(duration))
+							self.Instance:SetAttribute(`_search_{k}_limit`, math.floor(RENDER_DURATION/duration))
+						end
+	
+						local netDuration = netSum/netCount
+						self.Instance:SetAttribute(`search_net_ms`, toMilliseconds(netDuration))
+						self.Instance:SetAttribute(`search_net_limit`, math.floor(RENDER_DURATION/netDuration))
+					end
+
 				end
+
+				-- do
+				-- 	local function debugTree(dir: Directory<BasePart>, depth: number)
+				-- 		if depth > 0 then
+				-- 			local frame = Instance.new("Frame")
+				-- 			frame.BackgroundTransparency = 0.8
+				-- 			frame.ZIndex = depth + 5
+				-- 			frame.BackgroundColor3 = Color3.fromHSV(
+				-- 				if depth == 1 then 0 else 0.5,
+				-- 				1, --1/depth,
+				-- 				1
+				-- 			)
+				-- 			frame.BorderSizePixel = 3
+				-- 			frame.Position = UDim2.fromOffset(dir.Region.Min.X, dir.Region.Min.Y)
+				-- 			frame.Size = UDim2.fromOffset(dir.Region.Width, dir.Region.Height)
+	
+				-- 			frame.Parent = screen
+				-- 		end
+				-- 		for k, v in pairs(dir.SubDirectories) do
+				-- 			debugTree(v, depth+1)
+				-- 		end
+				-- 	end
+				-- 	debugTree(rTree._Master, 0)
+				-- end
 
 				-- do
 				-- 	local measurements: {[string]: {[number]: number}} = {}
