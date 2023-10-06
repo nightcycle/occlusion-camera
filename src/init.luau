@@ -347,12 +347,12 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 							partShapeRegistry[part] = shape
 							local finish = tick()				
 
-							local frame = Instance.new("Frame")
-							frame.BackgroundTransparency = 0.6
-							frame.BackgroundColor3 =Color3.new(1,1,1)
-							frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-							frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-							frame.Parent = screen
+							-- local frame = Instance.new("Frame")
+							-- frame.BackgroundTransparency = 0.8
+							-- frame.BackgroundColor3 =Color3.new(0,0,1)
+							-- frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
+							-- frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
+							-- frame.Parent = screen
 
 							table.insert(measurements[part.Name], finish - start)
 						end
@@ -419,11 +419,11 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					local function debugTree(dir: Directory<BasePart>, depth: number)
 						if depth > 0 then
 							local frame = Instance.new("Frame")
-							frame.BackgroundTransparency = 0.1
+							frame.BackgroundTransparency = 0.8
 							frame.ZIndex = depth + 5
 							frame.BackgroundColor3 = Color3.fromHSV(
-								1,
-								if depth == 1 then 1 else 0, --1/depth,
+								if depth == 1 then 0 else 0.5,
+								1, --1/depth,
 								1
 							)
 							frame.BorderSizePixel = 3
