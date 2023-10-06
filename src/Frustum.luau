@@ -72,7 +72,6 @@ export type Frustum = {
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
 	GetIfPartRendered: (self: Frustum, part: BasePart) -> boolean,
 	GetOuterBlockBounds: (self: Frustum, cf: CFrame, size: Vector3) -> Rect,
-	GetInnerBlockBounds: (self: Frustum, cf: CFrame, size: Vector3) -> Rect,
 	Draw: (self: Frustum) -> Folder,
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
@@ -295,11 +294,6 @@ end
 
 function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
 	return ShapeUtil.getBounds(self:GetProjectedShape(cf, size))
-end
-
-function Frustum:GetInnerBlockBounds(cf: CFrame, size: Vector3): Rect
-	return self:GetOuterBlockBounds(cf, size)
-	-- return ShapeUtil.getLargestRectWithinConvexShape(self:GetProjectedShape(cf, size))
 end
 
 function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean

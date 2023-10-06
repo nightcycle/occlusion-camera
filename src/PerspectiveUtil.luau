@@ -277,6 +277,8 @@ function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraPosition: Vecto
 
 	end
 
+	assert(#triangles ~= 0)
+
 	return triangles
 end
 function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraPosition: Vector3): {[number]: Vector3}
@@ -294,6 +296,8 @@ function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraPosition: Vecto
 		table.insert(perimeter, getWorldPosition(cf, size, cornerId :: CornerId))
 
 	end
+
+	assert(#perimeter ~= 0)
 
 	return perimeter
 end

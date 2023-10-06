@@ -10,8 +10,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ShapeUtil = require(ReplicatedStorage.Packages.package.ShapeUtil)
 local Maid = require(_Packages:WaitForChild("Maid"))
 local Signal = require(_Packages:WaitForChild("Signal"))
+local RTree = require(_Package:WaitForChild("RTree"))
 local Draw = require(_Packages:WaitForChild("Draw"))
-local GeometryUtil = require(_Packages:WaitForChild("GeometryUtil"))
+local TableUtil = require(_Packages:WaitForChild("TableUtil"))
 
 -- Modules
 local Config = require(_Package:WaitForChild("Config"))
@@ -90,6 +91,8 @@ end
 type Signal = Signal.Signal
 type Maid = Maid.Maid
 type Frustum = Frustum.Frustum
+type RTree<T> = RTree.RTree<T>
+type Directory<T> = RTree.Directory<T>
 export type OcclusionCamera = {
 	__index: OcclusionCamera,
 	_Maid: Maid,
@@ -312,113 +315,23 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			for i, part in ipairs(parts) do
 				assert(part:IsA("BasePart"), `inst {part:GetFullName()} isn't a basePart`)
 			end
-
-
-
+			self._Maid:GiveTask(function()
+				for i, inst in ipairs(parts) do
+					if inst:IsA("BasePart") then
+						inst.Color = Color3.fromHSV(1,0,0.75)
+					end
+				end
+			end)
 			self._Maid:GiveTask(RunService.RenderStepped:Connect(function(deltaTime: number)
 				local screen = self._Maid:GiveTask(Instance.new("ScreenGui"))
 				screen.Parent = game:GetService("CoreGui")
 
 				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
 		
-				-- do
-				-- 	local measurements: {[string]: {[number]: number}} = {}
+				local partRectRegistry: {[BasePart]: Rect} = {}
+				local partShapeRegistry: {[BasePart]: {[number]: Vector2}} = {}
 
-				-- 	local rectList: {[number]: Rect} = {}
-				-- 	for i, part in ipairs(parts) do
-				-- 		if frustum:GetIfPartRendered(part) then
-				-- 			measurements[part.Name] = measurements[part.Name] or {}
-	
-				-- 			local start = tick()
-				-- 			local rect = frustum:GetOuterBlockBounds(part.CFrame, part.Size)
-				-- 			local finish = tick()
-				-- 			table.insert(measurements[part.Name], finish - start)
-				-- 			table.insert(rectList, rect)	
-				-- 		end
-				-- 	end
-		
-				-- 	do
-				-- 		local netSum = 0
-				-- 		local netCount = 0
-				-- 		for k, vList in pairs(measurements) do
-				-- 			local sum = 0
-				-- 			local count = #vList
-				-- 			for i, v in ipairs(vList) do
-				-- 				sum += v
-				-- 			end
-				-- 			netSum += sum
-				-- 			netCount += count
-				-- 			local duration = sum/count
-				-- 			self.Instance:SetAttribute(`_outbounds_{k}_ms`, toMilliseconds(duration))
-				-- 			self.Instance:SetAttribute(`_outbounds_{k}_limit`, math.floor(RENDER_DURATION/duration))
-				-- 		end
-	
-				-- 		local netDuration = netSum/netCount
-				-- 		self.Instance:SetAttribute(`outbounds_net_ms`, toMilliseconds(netDuration))
-				-- 		self.Instance:SetAttribute(`outbounds_net_limit`, math.floor(RENDER_DURATION/netDuration))
-				-- 	end
-
-				-- 	if DEBUG_OCCLUSION and not NO_DEBUG_RENDER then
-				-- 		for i, rect in ipairs(rectList) do
-				-- 			local frame = Instance.new("Frame")
-				-- 			frame.BackgroundTransparency = 0.5
-				-- 			frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-				-- 			frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-				-- 			frame.Parent = screen
-				-- 		end
-				-- 	end
-				-- end
-
-
-				-- do
-				-- 	local measurements: {[string]: {[number]: number}} = {}
-
-				-- 	local rectList: {[number]: Rect} = {}
-				-- 	for i, part in ipairs(parts) do
-				-- 		if frustum:GetIfPartRendered(part) then
-				-- 			measurements[part.Name] = measurements[part.Name] or {}
-	
-				-- 			local start = tick()
-				-- 			local rect = frustum:GetInnerBlockBounds(part.CFrame, part.Size)
-				-- 			local finish = tick()
-				-- 			table.insert(measurements[part.Name], finish - start)
-				-- 			table.insert(rectList, rect)	
-				-- 		end
-				-- 	end
-		
-				-- 	do
-				-- 		local netSum = 0
-				-- 		local netCount = 0
-				-- 		for k, vList in pairs(measurements) do
-				-- 			local sum = 0
-				-- 			local count = #vList
-				-- 			for i, v in ipairs(vList) do
-				-- 				sum += v
-				-- 			end
-				-- 			netSum += sum
-				-- 			netCount += count
-				-- 			local duration = sum/count
-				-- 			self.Instance:SetAttribute(`_inbounds_{k}_ms`, toMilliseconds(duration))
-				-- 			self.Instance:SetAttribute(`_inbounds_{k}_limit`, math.floor(RENDER_DURATION/duration))
-				-- 		end
-	
-				-- 		local netDuration = netSum/netCount
-				-- 		self.Instance:SetAttribute(`inbounds_net_ms`, toMilliseconds(netDuration))
-				-- 		self.Instance:SetAttribute(`inbounds_net_limit`, math.floor(RENDER_DURATION/netDuration))
-				-- 	end
-
-				-- 	if DEBUG_OCCLUSION and not NO_DEBUG_RENDER then
-				-- 		for i, rect in ipairs(rectList) do
-				-- 			local frame = Instance.new("Frame")
-				-- 			frame.BackgroundTransparency = 0.5
-				-- 			frame.ZIndex = 2
-				-- 			frame.BackgroundColor3 = Color3.fromHSV(0.5,0.5,1)
-				-- 			frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-				-- 			frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-				-- 			frame.Parent = screen
-				-- 		end
-				-- 	end
-				-- end
+				local rTree = RTree.new() :: RTree<BasePart>
 
 				do
 					local measurements: {[string]: {[number]: number}} = {}
@@ -429,29 +342,17 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	
 							local start = tick()
 							local shape = frustum:GetProjectedShape(part.CFrame, part.Size)
-							local finish = tick()
+							local rect = ShapeUtil.getBounds(shape)
+							partRectRegistry[part] = rect
+							partShapeRegistry[part] = shape
+							local finish = tick()				
 
-							if DEBUG_OCCLUSION and not NO_DEBUG_RENDER then
-								local function debugLine(a: Vector2, b: Vector2)
-									local pos = a:Lerp(b, 0.5)
-									local offset = (b-a)
-									local frame = Instance.new("Frame")
-									frame.BackgroundTransparency = 0
-									frame.ZIndex = 10
-									frame.BorderSizePixel = 0
-									frame.AnchorPoint = Vector2.new(0.5,0.5)
-									frame.Position = UDim2.fromOffset(pos.X, pos.Y)
-									frame.BackgroundColor3 = Color3.fromHSV(0,1,1)
-									frame.Size = UDim2.fromOffset(5, offset.Magnitude)
-									frame.Rotation = math.deg(math.atan2(offset.X, -offset.Y))
-									frame.Parent = screen
-								end
-								for j, v in ipairs(shape) do
-									local pV = shape[j-1] or shape[#shape]
-									assert(pV)
-									debugLine(pV, v)
-								end
-							end
+							local frame = Instance.new("Frame")
+							frame.BackgroundTransparency = 0.6
+							frame.BackgroundColor3 =Color3.new(1,1,1)
+							frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
+							frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
+							frame.Parent = screen
 
 							table.insert(measurements[part.Name], finish - start)
 						end
@@ -469,55 +370,27 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 							netSum += sum
 							netCount += count
 							local duration = sum/count
-							self.Instance:SetAttribute(`_perimeter_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_perimeter_{k}_limit`, math.floor(RENDER_DURATION/duration))
+							self.Instance:SetAttribute(`_def_{k}_ms`, toMilliseconds(duration))
+							self.Instance:SetAttribute(`_def_{k}_limit`, math.floor(RENDER_DURATION/duration))
 						end
 	
 						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`perimeter_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`perimeter_net_limit`, math.floor(RENDER_DURATION/netDuration))
+						self.Instance:SetAttribute(`def_net_ms`, toMilliseconds(netDuration))
+						self.Instance:SetAttribute(`def_net_limit`, math.floor(RENDER_DURATION/netDuration))
 					end
 				end
 
-			
 				do
 					local measurements: {[string]: {[number]: number}} = {}
 
-					for i, part in ipairs(parts) do
-						if frustum:GetIfPartRendered(part) then
-							measurements[part.Name] = measurements[part.Name] or {}
-	
-							local start = tick()
-							local triangles = frustum:GetBlockShadow(part.CFrame, part.Size)
-							local finish = tick()
+					for part, rect in pairs(partRectRegistry) do
+						measurements[part.Name] = measurements[part.Name] or {}
 
-							if DEBUG_OCCLUSION and not NO_DEBUG_RENDER then
+						local start = tick()
+						rTree:Add(rect, part)
+						local finish = tick()
 
-								for j, tri in ipairs(triangles) do
-
-									local w1, w2 = drawTriangle(tri.A, tri.B, tri.C)
-									local rng = Random.new(tri.A.X * tri.A.Y + tri.B.X * tri.B.Y + tri.C.X * tri.C.Y)
-									local color = Color3.fromHSV(rng:NextNumber(), 0.75, 1)
-									w1.ZIndex, w2.ZIndex = 5, 5
-									w1.ImageColor3, w2.ImageColor3 = color, color
-									w1.Parent, w2.Parent = screen, screen
-
-									-- local rect = ShapeUtil.getBounds({tri.A, tri.B, tri.C})
-									-- do
-									-- 	local frame = Instance.new("Frame")
-									-- 	frame.BackgroundTransparency = 0.85
-									-- 	frame.ZIndex = 10
-									-- 	frame.BackgroundColor3 = color
-									-- 	frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-									-- 	frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-									-- 	frame.Parent = screen
-									-- end
-
-								end
-							end
-
-							table.insert(measurements[part.Name], finish - start)
-						end
+						table.insert(measurements[part.Name], finish - start)
 					end
 		
 					do
@@ -532,15 +405,143 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 							netSum += sum
 							netCount += count
 							local duration = sum/count
-							self.Instance:SetAttribute(`_triangles_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_triangles_{k}_limit`, math.floor(RENDER_DURATION/duration))
+							self.Instance:SetAttribute(`_add_{k}_ms`, toMilliseconds(duration))
+							self.Instance:SetAttribute(`_add_{k}_limit`, math.floor(RENDER_DURATION/duration))
 						end
 	
 						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`triangles_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`triangles_net_limit`, math.floor(RENDER_DURATION/netDuration))
+						self.Instance:SetAttribute(`add_net_ms`, toMilliseconds(netDuration))
+						self.Instance:SetAttribute(`add_net_limit`, math.floor(RENDER_DURATION/netDuration))
 					end
 				end
+
+				do
+					local function debugTree(dir: Directory<BasePart>, depth: number)
+						if depth > 0 then
+							local frame = Instance.new("Frame")
+							frame.BackgroundTransparency = 0.1
+							frame.ZIndex = depth + 5
+							frame.BackgroundColor3 = Color3.fromHSV(
+								1,
+								if depth == 1 then 1 else 0, --1/depth,
+								1
+							)
+							frame.BorderSizePixel = 3
+							frame.Position = UDim2.fromOffset(dir.Region.Min.X, dir.Region.Min.Y)
+							frame.Size = UDim2.fromOffset(dir.Region.Width, dir.Region.Height)
+	
+							frame.Parent = screen
+						end
+						for k, v in pairs(dir.SubDirectories) do
+							debugTree(v, depth+1)
+						end
+					end
+					debugTree(rTree._Master, 0)
+				end
+
+
+				-- do
+				-- 	local measurements: {[string]: {[number]: number}} = {}
+
+				-- 	for part, rect in pairs(partRectRegistry) do
+				-- 		measurements[part.Name] = measurements[part.Name] or {}
+
+				-- 		do
+				-- 			local start = tick()
+
+				-- 			local hits = rTree:Search(rect)
+
+				-- 			local isObscured = false
+				-- 			do
+				-- 				for i, hit in ipairs(hits) do
+				-- 					if hit == part then
+				-- 						if i ~= 1 then
+				-- 							isObscured = true
+				-- 						end
+				-- 						break
+				-- 					end
+				-- 				end
+				-- 			end
+			
+				-- 			print(`h: {#hits} = {isObscured}`)
+				-- 			local finish = tick()
+				-- 			-- local shape = partShapeRegistry[part]
+				-- 			local color = if isObscured then Color3.new(0,0,1) else Color3.new(1,0,0)
+				-- 			if DEBUG_OCCLUSION and not NO_DEBUG_RENDER then
+				-- 				do
+				-- 					local frame = Instance.new("Frame")
+				-- 					frame.BackgroundTransparency = 0.7
+				-- 					frame.ZIndex = 10
+				-- 					frame.BackgroundColor3 =  color
+				-- 					frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
+				-- 					frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
+				-- 					frame.Parent = screen
+				-- 				end
+				-- 				-- for i, hit in ipairs(hits) do
+				-- 				-- 	do
+				-- 				-- 		local frame = Instance.new("Frame")
+				-- 				-- 		frame.BackgroundTransparency = i
+				-- 				-- 		frame.ZIndex = 10
+				-- 				-- 		frame.BackgroundColor3 =  if hit ~= part then color else Color3.new(0.5,0.5,0.5)
+				-- 				-- 		frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
+				-- 				-- 		frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
+				-- 				-- 		frame.Parent = screen
+				-- 				-- 	end
+				-- 				-- 	if hit ~= part then
+				-- 				-- 	end
+				-- 				-- end
+
+				-- 				-- local function debugLine(a: Vector2, b: Vector2)
+				-- 				-- 	local pos = a:Lerp(b, 0.5)
+				-- 				-- 	local offset = (b-a)
+				-- 				-- 	local frame = Instance.new("Frame")
+				-- 				-- 	frame.BackgroundTransparency = 00.5
+				-- 				-- 	frame.ZIndex = 10
+				-- 				-- 	frame.BorderSizePixel = 0
+				-- 				-- 	frame.AnchorPoint = Vector2.new(0.5,0.5)
+				-- 				-- 	frame.Position = UDim2.fromOffset(pos.X, pos.Y)
+				-- 				-- 	frame.BackgroundColor3 = color --Color3.new(1,1,1)
+				-- 				-- 	frame.Size = UDim2.fromOffset(5, offset.Magnitude)
+				-- 				-- 	frame.Rotation = math.deg(math.atan2(offset.X, -offset.Y))
+				-- 				-- 	frame.Parent = screen
+				-- 				-- end
+
+				-- 				-- for j, v in ipairs(shape) do
+				-- 				-- 	local pV = shape[j-1] or shape[#shape]
+				-- 				-- 	assert(pV)
+				-- 				-- 	debugLine(pV, v)
+				-- 				-- end
+				-- 			end
+
+				-- 			part.Color = color
+
+				-- 			table.insert(measurements[part.Name], finish - start)
+				-- 		end
+
+				-- 		-- break
+				-- 	end
+		
+				-- 	do
+				-- 		local netSum = 0
+				-- 		local netCount = 0
+				-- 		for k, vList in pairs(measurements) do
+				-- 			local sum = 0
+				-- 			local count = #vList
+				-- 			for i, v in ipairs(vList) do
+				-- 				sum += v
+				-- 			end
+				-- 			netSum += sum
+				-- 			netCount += count
+				-- 			local duration = sum/count
+				-- 			self.Instance:SetAttribute(`_search_{k}_ms`, toMilliseconds(duration))
+				-- 			self.Instance:SetAttribute(`_search_{k}_limit`, math.floor(RENDER_DURATION/duration))
+				-- 		end
+	
+				-- 		local netDuration = netSum/netCount
+				-- 		self.Instance:SetAttribute(`search_net_ms`, toMilliseconds(netDuration))
+				-- 		self.Instance:SetAttribute(`search_net_limit`, math.floor(RENDER_DURATION/netDuration))
+				-- 	end
+				-- end
 				
 				self._Maid._screen = screen
 			end))
@@ -605,8 +606,6 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			end
 		end))	
 	end
-
-	
 
 	return self
 end

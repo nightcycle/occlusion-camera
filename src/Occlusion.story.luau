@@ -45,6 +45,9 @@ return function(frame: Frame)
 		local camera: Camera
 		if USE_REAL_CAMERA then
 			camera = workspace.CurrentCamera
+			for k, v in pairs(camera:GetAttributes()) do
+				camera:SetAttribute(k, nil)
+			end
 		else
 			camera = maid:GiveTask(Instance.new("Camera"))
 			camera:SetAttribute("NearPlaneZ", -50)
