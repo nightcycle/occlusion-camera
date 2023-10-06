@@ -330,6 +330,8 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 		
 				local partRectRegistry: {[BasePart]: Rect} = {}
 				local partShapeRegistry: {[BasePart]: {[number]: Vector2}} = {}
+				local partAreaRegistry: {[BasePart]: number} = {}
+				local visiblePartList: {[number]: BasePart} = {}
 
 				local rTree = RTree.new() :: RTree<BasePart>
 
@@ -343,16 +345,11 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 							local start = tick()
 							local shape = frustum:GetProjectedShape(part.CFrame, part.Size)
 							local rect = ShapeUtil.getBounds(shape)
+							partAreaRegistry[part] = rect.Width * rect.Height
 							partRectRegistry[part] = rect
 							partShapeRegistry[part] = shape
+							table.insert(visiblePartList, part)
 							local finish = tick()				
-
-							-- local frame = Instance.new("Frame")
-							-- frame.BackgroundTransparency = 0.8
-							-- frame.BackgroundColor3 =Color3.new(0,0,1)
-							-- frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-							-- frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-							-- frame.Parent = screen
 
 							table.insert(measurements[part.Name], finish - start)
 						end
@@ -379,6 +376,10 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						self.Instance:SetAttribute(`def_net_limit`, math.floor(RENDER_DURATION/netDuration))
 					end
 				end
+
+				table.sort(visiblePartList, function(a: BasePart, b: BasePart): boolean
+					return partAreaRegistry[a] > partAreaRegistry[b]
+				end)
 
 				do
 					local measurements: {[string]: {[number]: number}} = {}
@@ -438,7 +439,6 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					end
 					debugTree(rTree._Master, 0)
 				end
-
 
 				-- do
 				-- 	local measurements: {[string]: {[number]: number}} = {}
