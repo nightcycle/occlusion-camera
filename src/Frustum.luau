@@ -77,7 +77,7 @@ export type Frustum = {
 }
 -- Constants
 local USE_EXACT_CULLING = Config.Debug.UseExactCulling
-local USE_CUSTOM_VIEWPORT_MATH = true
+local USE_CUSTOM_VIEWPORT_MATH = false
 
 -- Variables
 -- References
@@ -254,7 +254,7 @@ function Frustum:GetIfRayRendered(ray: Ray): boolean
 end
 
 function Frustum:GetBlockShadow(cf: CFrame, size: Vector3): {[number]: Triangle}
-	local worldTriangles = PerspectiveUtil.getWorldTriangles(cf, size, self.CFrame.Position)
+	local worldTriangles = PerspectiveUtil.getWorldTriangles(cf, size, self.CFrame)
 	local triangles: {[number]: Triangle} = {}
 	
 	for i, tri in ipairs(worldTriangles) do
@@ -282,7 +282,7 @@ end
 
 function Frustum:GetProjectedShape(cf: CFrame, size: Vector3): {[number]: Vector2}
 	local shape: {[number]: Vector2} = {}
-	for i, v in ipairs(PerspectiveUtil.getWorldPerimeter(cf, size, self.CFrame.Position)) do
+	for i, v in ipairs(PerspectiveUtil.getWorldPerimeter(cf, size, self.CFrame)) do
 		local s, _ = self:GetViewportPosition(v)
 		table.insert(shape, Vector2.new(
 			math.round(s.X),
@@ -293,7 +293,7 @@ function Frustum:GetProjectedShape(cf: CFrame, size: Vector3): {[number]: Vector
 end
 
 function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
-	return ShapeUtil.getBounds(self:GetProjectedShape(cf, size))
+	return ShapeUtil.getOuterBounds(self:GetProjectedShape(cf, size))
 end
 
 function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean

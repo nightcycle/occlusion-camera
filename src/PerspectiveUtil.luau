@@ -14,6 +14,26 @@ type FaceId = "X" | "x" | "Y" | "y" | "Z" | "z"
 type PerspectiveId = CornerId | EdgeId | FaceId
 
 -- Constants
+-- local INNER_BOX_DATA: {[PerspectiveId]: {
+-- 	MinX: CornerId | EdgeId,
+-- 	MaxX: CornerId | EdgeId,
+-- 	MinY: CornerId | EdgeId,
+-- 	MaxY: CornerId | EdgeId,
+-- }} = {
+-- 	XYZ = {
+-- 		MinX = "Yz",
+-- 		MinY = "Yx",
+-- 		MaxX = "yx",
+-- 		MaxY = "yz",
+-- 	},
+-- 	XYZ = {
+-- 		MinX = "Yz",
+-- 		MinY = "Yx",
+-- 		MaxX = "yx",
+-- 		MaxY = "yz",
+-- 	},
+-- }
+
 local TRIANGLE_DATA: {[PerspectiveId]: {[number]: {[number]: CornerId}}} = {
 	X = {
 		{"Xyz", "XYz", "XYZ"},
@@ -210,8 +230,8 @@ local CORNER_OFFSET: {[CornerId]: Vector3} = {
 -- Variables
 -- References
 -- Private Functions
-function getCenterId(cf: CFrame, size: Vector3, cameraPosition: Vector3): PerspectiveId
-	local offset = cf:PointToObjectSpace(cameraPosition)
+function getCenterId(cf: CFrame, size: Vector3, cameraCF: CFrame): PerspectiveId
+	local offset = cf:PointToObjectSpace(cameraCF.Position)
 	local x: string, y: string, z: string
 	if offset.X < 0 then
 		x = "x"
@@ -248,10 +268,10 @@ end
 -- Class
 local Util = {}
 
-function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraPosition: Vector3): {[number]: {A: Vector3, B: Vector3, C: Vector3}}
+function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraCF: CFrame): {[number]: {A: Vector3, B: Vector3, C: Vector3}}
 	local triangles: {[number]: {A: Vector3, B: Vector3, C: Vector3}} = {}
 
-	local centerId: PerspectiveId = getCenterId(cf, size, cameraPosition)
+	local centerId: PerspectiveId = getCenterId(cf, size, cameraCF)
 	if centerId:len() == 0 then return {} end
 
 	local function addTriangle(aId: CornerId, bId: CornerId, cId: CornerId)
@@ -281,10 +301,14 @@ function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraPosition: Vecto
 
 	return triangles
 end
-function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraPosition: Vector3): {[number]: Vector3}
+function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraCF: CFrame): {[number]: Vector3}
 
-	local centerId: PerspectiveId = getCenterId(cf, size, cameraPosition)
+	local centerId: PerspectiveId = getCenterId(cf, size, cameraCF)
+	print(`c: {centerId}`)
+	
 	if centerId:len() == 0 then return {} end
+
+
 
 	local perimeterData = PERIMETER_DATA[centerId]
 	assert(perimeterData, `bad perimeter: {centerId}`)

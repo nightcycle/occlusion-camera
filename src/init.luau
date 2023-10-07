@@ -283,6 +283,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
 		
 				local partRectRegistry: {[BasePart]: Rect} = {}
+				local partInnerRectRegistry: {[BasePart]: Rect} = {}
 				local partShapeRegistry: {[BasePart]: {[number]: Vector2}} = {}
 				local partAreaRegistry: {[BasePart]: number} = {}
 				local partDistanceRegistry: {[BasePart]: number} = {}
@@ -299,9 +300,10 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	
 							local start = tick()
 							local shape = frustum:GetProjectedShape(part.CFrame, part.Size)
-							local rect = ShapeUtil.getBounds(shape)
-							partAreaRegistry[part] = rect.Width * rect.Height
-							partRectRegistry[part] = rect
+							local outerRect = ShapeUtil.getOuterBounds(shape)
+
+							partAreaRegistry[part] = outerRect.Width * outerRect.Height
+							partRectRegistry[part] = outerRect
 							partShapeRegistry[part] = shape
 							partDistanceRegistry[part] = (part.CFrame.Position - self.Instance.CFrame.Position).Magnitude
 							table.insert(visiblePartList, part)
@@ -390,6 +392,34 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						local isOccluded = mask:GetIfOccluded(part)
 
 						local finish = tick()
+
+						for i, v in ipairs(partShapeRegistry[part]) do
+							do
+								local frame = Instance.new("Frame")
+								frame.BackgroundTransparency = 0
+								frame.ZIndex = 10 + self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
+								frame.BackgroundColor3 =  Color3.new(1,1,0)
+								frame.Position = UDim2.fromOffset(v.X, v.Y)
+								frame.AnchorPoint = Vector2.new(0.5, 0.5)
+								frame.Size = UDim2.fromOffset(5, 5)
+								frame.Parent = screen
+							end
+
+							do
+								local nV = partShapeRegistry[part][i+1] or partShapeRegistry[part][1]
+								local mid = v:Lerp(nV, 0.5)
+								local offset = (nV - v)
+								local frame = Instance.new("Frame")
+								frame.BackgroundTransparency = 0
+								frame.ZIndex = 20 + self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
+								frame.BackgroundColor3 =  Color3.new(1,1,0)
+								frame.Position = UDim2.fromOffset(mid.X, mid.Y)
+								frame.AnchorPoint = Vector2.new(0.5, 0.5)
+								frame.Rotation = math.deg(math.atan2(offset.Y, offset.X)) + 90
+								frame.Size = UDim2.fromOffset(5, offset.Magnitude)
+								frame.Parent = screen
+							end
+						end
 
 						do
 							local frame = Instance.new("Frame")

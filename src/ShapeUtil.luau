@@ -17,12 +17,14 @@ end
 -- Class
 local Util = {}
 
-function Util.getBounds(perimeter: {[number]: Vector2}): Rect
+function Util.getOuterBounds(perimeter: {[number]: Vector2}): Rect
 	if #perimeter == 0 then return Rect.new(Vector2.zero, Vector2.zero) end
+	
 	local minX: number
 	local maxX: number
 	local minY: number
 	local maxY: number
+
 	local function compare(v: Vector2)
 		if not minX or v.X < minX then
 			minX = v.X
@@ -37,16 +39,26 @@ function Util.getBounds(perimeter: {[number]: Vector2}): Rect
 			maxY = v.Y
 		end
 	end
-
+	-- print(`\nviewport: {viewportSize}`)
 	assert(#perimeter > 0)
 	for i, pos in ipairs(perimeter) do
+		-- compare(Vector2.new(
+		-- 	math.clamp(pos.X, 0, viewportSize.X),
+		-- 	math.clamp(pos.Y, 0, viewportSize.Y)
+		-- ))
 		compare(pos)
 	end
 
-	return Rect.new(
+	assert(minX == minX)
+	assert(maxX == maxX)
+	assert(maxY == maxY)
+
+	local r = Rect.new(
 		Vector2.new(minX, minY),
 		Vector2.new(maxX, maxY)
 	)
+	-- print(`r: {r}`)
+	return r
 end
 
 function Util.getVisibleRects(focus: Rect, filters: {[number]: Rect}): {[number]: Rect}
