@@ -304,7 +304,6 @@ end
 function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraCF: CFrame): {[number]: Vector3}
 
 	local centerId: PerspectiveId = getCenterId(cf, size, cameraCF)
-	print(`c: {centerId}`)
 	
 	if centerId:len() == 0 then return {} end
 

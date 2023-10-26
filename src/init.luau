@@ -282,41 +282,36 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 
 				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
 		
-				local partRectRegistry: {[BasePart]: Rect} = {}
+				local partOuterRectRegistry: {[BasePart]: Rect} = {}
 				local partInnerRectRegistry: {[BasePart]: Rect} = {}
 				local partShapeRegistry: {[BasePart]: {[number]: Vector2}} = {}
-				local partAreaRegistry: {[BasePart]: number} = {}
+				local partOuterAreaRegistry: {[BasePart]: number} = {}
+				local partInnerAreaRegistry: {[BasePart]: number} = {}
 				local partDistanceRegistry: {[BasePart]: number} = {}
 				local visiblePartList: {[number]: BasePart} = {}
 
 				local mask = Mask.new() :: Mask<BasePart>
 
 				do
-					local measurements: {[string]: {[number]: number}} = {}
+					local shapeMeasurements: {[string]: {[number]: number}} = {}
 
 					for i, part in ipairs(parts) do
 						if frustum:GetIfPartRendered(part) then
-							measurements[part.Name] = measurements[part.Name] or {}
+							shapeMeasurements[part.Name] = shapeMeasurements[part.Name] or {}
 	
 							local start = tick()
 							local shape = frustum:GetProjectedShape(part.CFrame, part.Size)
-							local outerRect = ShapeUtil.getOuterBounds(shape)
-
-							partAreaRegistry[part] = outerRect.Width * outerRect.Height
-							partRectRegistry[part] = outerRect
+							local finish = tick()				
 							partShapeRegistry[part] = shape
 							partDistanceRegistry[part] = (part.CFrame.Position - self.Instance.CFrame.Position).Magnitude
-							table.insert(visiblePartList, part)
-							local finish = tick()				
-
-							table.insert(measurements[part.Name], finish - start)
+							table.insert(shapeMeasurements[part.Name], finish - start)
 						end
 					end
 		
 					do
 						local netSum = 0
 						local netCount = 0
-						for k, vList in pairs(measurements) do
+						for k, vList in pairs(shapeMeasurements) do
 							local sum = 0
 							local count = #vList
 							for i, v in ipairs(vList) do
@@ -325,25 +320,118 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 							netSum += sum
 							netCount += count
 							local duration = sum/count
-							self.Instance:SetAttribute(`_def_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_def_{k}_limit`, math.floor(RENDER_DURATION/duration))
+							self.Instance:SetAttribute(`_shape_{k}_ms`, toMilliseconds(duration))
+							self.Instance:SetAttribute(`_shape_{k}_limit`, math.floor(RENDER_DURATION/duration))
 						end
 	
 						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`def_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`def_net_limit`, math.floor(RENDER_DURATION/netDuration))
+						self.Instance:SetAttribute(`shape_net_ms`, toMilliseconds(netDuration))
+						self.Instance:SetAttribute(`shape_net_limit`, math.floor(RENDER_DURATION/netDuration))
+					end
+				end
+
+
+				do
+					local outerRectMeasurements: {[string]: {[number]: number}} = {}
+
+					for part, shape in pairs(partShapeRegistry) do
+						outerRectMeasurements[part.Name] = outerRectMeasurements[part.Name] or {}
+
+						local start = tick()
+						local outerRect = ShapeUtil.getOuterBounds(shape)
+						local finish = tick()				
+
+						partOuterAreaRegistry[part] = outerRect.Width * outerRect.Height
+						partOuterRectRegistry[part] = outerRect
+
+						table.insert(outerRectMeasurements[part.Name], finish - start)
+					end
+		
+					do
+						local netSum = 0
+						local netCount = 0
+						for k, vList in pairs(outerRectMeasurements) do
+							local sum = 0
+							local count = #vList
+							for i, v in ipairs(vList) do
+								sum += v
+							end
+							netSum += sum
+							netCount += count
+							local duration = sum/count
+							self.Instance:SetAttribute(`_out_{k}_ms`, toMilliseconds(duration))
+							self.Instance:SetAttribute(`_out_{k}_limit`, math.floor(RENDER_DURATION/duration))
+						end
+	
+						local netDuration = netSum/netCount
+						self.Instance:SetAttribute(`out_net_ms`, toMilliseconds(netDuration))
+						self.Instance:SetAttribute(`out_net_limit`, math.floor(RENDER_DURATION/netDuration))
+					end
+				end
+
+				do
+					local innerMeasurements: {[string]: {[number]: number}} = {}
+
+					for part, shape in pairs(partShapeRegistry) do
+						innerMeasurements[part.Name] = innerMeasurements[part.Name] or {}
+
+						local start = tick()
+						local innerRect = ShapeUtil.getInnerBounds(shape)
+						local finish = tick()				
+
+						do
+							for rect, fillType in pairs(ShapeUtil.getInnerBoundSubdivisions(shape)) do
+								local frame = Instance.new("Frame")
+								frame.BackgroundTransparency = 0.5
+								frame.ZIndex = 1
+								frame.BorderSizePixel = 1
+								frame.BackgroundColor3 = if fillType == "Inner" then Color3.new(0,1,0) elseif fillType == "Line" then Color3.new(1,1,0) else  Color3.new(1,0,0)
+								frame.Position = UDim2.fromOffset(rect.Min.X+frame.BorderSizePixel, rect.Min.Y+frame.BorderSizePixel)
+								frame.Size = UDim2.fromOffset(rect.Width-frame.BorderSizePixel*2, rect.Height-frame.BorderSizePixel*2)
+								frame.Parent = screen
+							end
+						end
+
+
+						partInnerAreaRegistry[part] = innerRect.Width * innerRect.Height
+						partInnerRectRegistry[part] = innerRect
+
+						table.insert(visiblePartList, part)
+
+						table.insert(innerMeasurements[part.Name], finish - start)
+					end
+		
+					do
+						local netSum = 0
+						local netCount = 0
+						for k, vList in pairs(innerMeasurements) do
+							local sum = 0
+							local count = #vList
+							for i, v in ipairs(vList) do
+								sum += v
+							end
+							netSum += sum
+							netCount += count
+							local duration = sum/count
+							self.Instance:SetAttribute(`_in_{k}_ms`, toMilliseconds(duration))
+							self.Instance:SetAttribute(`_in_{k}_limit`, math.floor(RENDER_DURATION/duration))
+						end
+	
+						local netDuration = netSum/netCount
+						self.Instance:SetAttribute(`in_net_ms`, toMilliseconds(netDuration))
+						self.Instance:SetAttribute(`in_net_limit`, math.floor(RENDER_DURATION/netDuration))
 					end
 				end
 
 				table.sort(visiblePartList, function(a: BasePart, b: BasePart): boolean
-					return partAreaRegistry[a] > partAreaRegistry[b]
+					return partOuterAreaRegistry[a] > partOuterAreaRegistry[b]
 				end)
 
 				do
-					local measurements: {[string]: {[number]: number}} = {}
+					local maskMeasurements: {[string]: {[number]: number}} = {}
 
-					for part, rect in pairs(partRectRegistry) do
-						measurements[part.Name] = measurements[part.Name] or {}
+					for part, rect in pairs(partOuterRectRegistry) do
+						maskMeasurements[part.Name] = maskMeasurements[part.Name] or {}
 
 						local start = tick()
 
@@ -356,13 +444,13 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						)
 						local finish = tick()
 
-						table.insert(measurements[part.Name], finish - start)
+						table.insert(maskMeasurements[part.Name], finish - start)
 					end
 		
 					do
 						local netSum = 0
 						local netCount = 0
-						for k, vList in pairs(measurements) do
+						for k, vList in pairs(maskMeasurements) do
 							local sum = 0
 							local count = #vList
 							for i, v in ipairs(vList) do
@@ -371,22 +459,22 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 							netSum += sum
 							netCount += count
 							local duration = sum/count
-							self.Instance:SetAttribute(`_add_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_add_{k}_limit`, math.floor(RENDER_DURATION/duration))
+							self.Instance:SetAttribute(`_mask_{k}_ms`, toMilliseconds(duration))
+							self.Instance:SetAttribute(`_mask_{k}_limit`, math.floor(RENDER_DURATION/duration))
 						end
 	
 						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`add_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`add_net_limit`, math.floor(RENDER_DURATION/netDuration))
+						self.Instance:SetAttribute(`mask_net_ms`, toMilliseconds(netDuration))
+						self.Instance:SetAttribute(`mask_net_limit`, math.floor(RENDER_DURATION/netDuration))
 					end
 
 				end
 
 				do
-					local measurements: {[string]: {[number]: number}} = {}
-
-					for part, rect in pairs(partRectRegistry) do
-						measurements[part.Name] = measurements[part.Name] or {}
+					local searchMeasurements: {[string]: {[number]: number}} = {}
+				
+					for part, rect in pairs(partOuterRectRegistry) do
+						searchMeasurements[part.Name] = searchMeasurements[part.Name] or {}
 
 						local start = tick()
 						local isOccluded = mask:GetIfOccluded(part)
@@ -421,23 +509,23 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 							end
 						end
 
-						do
-							local frame = Instance.new("Frame")
-							frame.BackgroundTransparency = if not isOccluded then 0.8 else 0.2
-							frame.ZIndex = self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
-							frame.BackgroundColor3 =  if not isOccluded then Color3.new(0, 1, 1) else Color3.new(1,0,0)
-							frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-							frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-							frame.Parent = screen
-						end
+						-- do
+						-- 	local frame = Instance.new("Frame")
+						-- 	frame.BackgroundTransparency = if not isOccluded then 0.8 else 0.2
+						-- 	frame.ZIndex = self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
+						-- 	frame.BackgroundColor3 =  if not isOccluded then Color3.new(0, 1, 1) else Color3.new(1,0,0)
+						-- 	frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
+						-- 	frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
+						-- 	frame.Parent = screen
+						-- end
 
-						table.insert(measurements[part.Name], finish - start)
+						table.insert(searchMeasurements[part.Name], finish - start)
 					end
 		
 					do
 						local netSum = 0
 						local netCount = 0
-						for k, vList in pairs(measurements) do
+						for k, vList in pairs(searchMeasurements) do
 							local sum = 0
 							local count = #vList
 							for i, v in ipairs(vList) do
@@ -484,7 +572,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				-- do
 				-- 	local measurements: {[string]: {[number]: number}} = {}
 
-				-- 	for part, rect in pairs(partRectRegistry) do
+				-- 	for part, rect in pairs(partOuterRectRegistry) do
 				-- 		measurements[part.Name] = measurements[part.Name] or {}
 
 				-- 		do
