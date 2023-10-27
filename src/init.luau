@@ -13,6 +13,7 @@ local Maid = require(_Packages:WaitForChild("Maid"))
 local Signal = require(_Packages:WaitForChild("Signal"))
 local Draw = require(_Packages:WaitForChild("Draw"))
 local TableUtil = require(_Packages:WaitForChild("TableUtil"))
+local Queue = require(_Packages:WaitForChild("Queue"))
 
 -- Modules
 local RTree = require(_Package:WaitForChild("RTree"))
@@ -26,11 +27,11 @@ local NO_DEBUG_RENDER = Config.Debug.NoDebugRender
 local DEBUG_OCCLUSION = Config.Debug.Occlusion
 local DEBUG_CULLING = Config.Debug.Culling
 local IN_FRUSTUM_TAG = Config.Tag.InFrustum
-local OBSCURED_TAG = Config.Tag.Obscured
-local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
+-- local OBSCURED_TAG = Config.Tag.Obscured
+-- local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local VISIBLE_TAG = Config.Tag.Visible
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
-local PROCESS_LIMIT = 10
+-- local PROCESS_LIMIT = 10
 local RENDER_DURATION = 0.5/60
 -- Variables
 -- References
@@ -40,6 +41,7 @@ local RENDER_DURATION = 0.5/60
 
 -- Class
 -- Types
+type Queue<T> = Queue.Queue<T>
 type Signal = Signal.Signal
 type Maid = Maid.Maid
 type Frustum = Frustum.Frustum
@@ -61,12 +63,15 @@ export type OcclusionCamera = {
 	OnObscurePart: Signal,
 	OnPartExitFrustum: Signal,
 	OnPartEnterFrustum: Signal,
+
 	NoOccludeTag: string,
+	Parts: {[number]: BasePart},
+
 	GetVisibleParts: (self: OcclusionCamera) -> {[number]: BasePart},
-	GetObscuredParts: (self: OcclusionCamera) -> {[number]: BasePart},
+	-- GetObscuredParts: (self: OcclusionCamera) -> {[number]: BasePart},
 	GetPartsInFrustum: (self: OcclusionCamera) -> {[number]: BasePart},
 	GetIfPartIsVisible: (self: OcclusionCamera, part: BasePart) -> boolean,
-	GetIfPartIsObscured: (self: OcclusionCamera, part: BasePart) -> boolean,
+	-- GetIfPartIsObscured: (self: OcclusionCamera, part: BasePart) -> boolean,
 	GetIfPartIsInFrustum: (self: OcclusionCamera, part: BasePart) -> boolean,
 	Destroy: (self: OcclusionCamera) -> (),
 	new: (camera: Camera) -> OcclusionCamera,
@@ -92,9 +97,9 @@ function OcclusionCamera:GetIfPartIsVisible(part: BasePart): boolean
 	return CollectionService:HasTag(part, VISIBLE_TAG)
 end
 
-function OcclusionCamera:GetIfPartIsObscured(part: BasePart): boolean
-	return CollectionService:HasTag(part, OBSCURED_TAG)
-end
+-- function OcclusionCamera:GetIfPartIsObscured(part: BasePart): boolean
+-- 	return CollectionService:HasTag(part, OBSCURED_TAG)
+-- end
 
 function OcclusionCamera:GetIfPartIsInFrustum(part: BasePart): boolean
 	return CollectionService:HasTag(part, IN_FRUSTUM_TAG)
@@ -108,9 +113,9 @@ function OcclusionCamera:GetPartsInFrustum(): {[number]: BasePart}
 	return CollectionService:GetTagged(IN_FRUSTUM_TAG) :: {[number]: any}
 end
 
-function OcclusionCamera:GetObscuredParts(): {[number]: BasePart}
-	return CollectionService:GetTagged(OBSCURED_TAG) :: {[number]: any}
-end
+-- function OcclusionCamera:GetObscuredParts(): {[number]: BasePart}
+-- 	return CollectionService:GetTagged(OBSCURED_TAG) :: {[number]: any}
+-- end
 
 function OcclusionCamera.new(camera: Camera): OcclusionCamera
 
@@ -123,6 +128,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	self.SampleCount = 256
 	self.WorldRoot = workspace
 	self.NoOccludeTag = "OcclusionCameraNoOcclude"
+	self.Parts = {}
 
 	self.OnViewPart = self._Maid:GiveTask(Signal.new())
 	self.OnObscurePart = self._Maid:GiveTask(Signal.new())
@@ -149,36 +155,36 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 		onVisibleTag(inst)
 	end
 
-	local function onInitialObscureTag(inst: Instance)
-		assert(inst:IsA("BasePart"))
-		if self.ObscureDelay > 0 then
-			task.wait(self.ObscureDelay)
+	-- local function onInitialObscureTag(inst: Instance)
+	-- 	assert(inst:IsA("BasePart"))
+	-- 	if self.ObscureDelay > 0 then
+	-- 		task.wait(self.ObscureDelay)
 
-			if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) and self._IsAlive then
-				if not CollectionService:HasTag(inst, OBSCURED_TAG) then
-					CollectionService:AddTag(inst, OBSCURED_TAG)
-				end
-			end
-		else
-			if not CollectionService:HasTag(inst, OBSCURED_TAG) then
-				CollectionService:AddTag(inst, OBSCURED_TAG)
-			end
-		end
-	end
+	-- 		if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) and self._IsAlive then
+	-- 			if not CollectionService:HasTag(inst, OBSCURED_TAG) then
+	-- 				CollectionService:AddTag(inst, OBSCURED_TAG)
+	-- 			end
+	-- 		end
+	-- 	else
+	-- 		if not CollectionService:HasTag(inst, OBSCURED_TAG) then
+	-- 			CollectionService:AddTag(inst, OBSCURED_TAG)
+	-- 		end
+	-- 	end
+	-- end
 
-	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(INITIAL_OBSCURED_TAG):Connect(onInitialObscureTag))
-	for i, inst in ipairs(CollectionService:GetTagged(INITIAL_OBSCURED_TAG)) do
-		onInitialObscureTag(inst)
-	end
+	-- self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(INITIAL_OBSCURED_TAG):Connect(onInitialObscureTag))
+	-- for i, inst in ipairs(CollectionService:GetTagged(INITIAL_OBSCURED_TAG)) do
+	-- 	onInitialObscureTag(inst)
+	-- end
 
-	local function onObscureTag(inst: Instance)
-		assert(inst:IsA("BasePart"))
-		self.OnObscurePart:Fire(inst)
-	end
-	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(OBSCURED_TAG):Connect(onObscureTag))
-	for i, inst in ipairs(CollectionService:GetTagged(OBSCURED_TAG)) do
-		onObscureTag(inst)
-	end
+	-- local function onObscureTag(inst: Instance)
+	-- 	assert(inst:IsA("BasePart"))
+	-- 	self.OnObscurePart:Fire(inst)
+	-- end
+	-- self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(OBSCURED_TAG):Connect(onObscureTag))
+	-- for i, inst in ipairs(CollectionService:GetTagged(OBSCURED_TAG)) do
+	-- 	onObscureTag(inst)
+	-- end
 
 	local function onFrustumTag(inst: Instance)
 		assert(inst:IsA("BasePart"))
@@ -193,12 +199,12 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	local function onRemoveFrustumTag(inst: Instance)
 		if not inst:IsDescendantOf(game) then return end
 		inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
-		if CollectionService:HasTag(inst, OBSCURED_TAG) then
-			CollectionService:RemoveTag(inst, OBSCURED_TAG)
-		end
-		if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
-			CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
-		end
+		-- if CollectionService:HasTag(inst, OBSCURED_TAG) then
+		-- 	CollectionService:RemoveTag(inst, OBSCURED_TAG)
+		-- end
+		-- if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
+		-- 	CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
+		-- end
 		if CollectionService:HasTag(inst, VISIBLE_TAG) then
 			CollectionService:RemoveTag(inst, VISIBLE_TAG)
 		end
@@ -211,7 +217,6 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 		local function toMilliseconds(v: number): number
 			return math.round(1000*10000*v)/10000
 		end
-
 
 		if DEBUG_CULLING then
 			local debugInstances: {[number]: Instance} = workspace:WaitForChild("Map"):GetChildren()
@@ -234,7 +239,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					if inst:IsA("BasePart") then
 						measurements[inst.Name] = measurements[inst.Name] or {}
 						local start = tick()
-						local isInFrustum: boolean = frustum:GetIfPartRendered(inst)
+						local isInFrustum: boolean = frustum:GetIfOverlapFrustum(inst)
 						local finish = tick()
 						table.insert(measurements[inst.Name], finish - start)
 						if not NO_DEBUG_RENDER then
@@ -266,7 +271,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			end))
 		else
 
-			local parts: {[number]: BasePart} = workspace:WaitForChild("SmallerMap"):GetChildren() :: any
+			local parts: {[number]: BasePart} = workspace:WaitForChild("MediumMap"):GetChildren() :: any
 			for i, part in ipairs(parts) do
 				assert(part:IsA("BasePart"), `inst {part:GetFullName()} isn't a basePart`)
 			end
@@ -338,7 +343,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					local shapeMeasurements: {[string]: {[number]: number}} = {}
 
 					for i, part in ipairs(parts) do
-						if frustum:GetIfPartRendered(part) then
+						if frustum:GetIfOverlapFrustum(part) then
 							shapeMeasurements[part.Name] = shapeMeasurements[part.Name] or {}
 	
 							local start = tick()
@@ -417,18 +422,18 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					for part, shape in pairs(partShapeRegistry) do
 						innerMeasurements[part.Name] = innerMeasurements[part.Name] or {}
 
-						do
-							for i, v in ipairs(shape) do
-								local nV = shape[i+1] or shape[1]
-								_drawLine(
-									v, 
-									nV,
-									Color3.fromHSV((i-1)/#shape,1,1),
-									0,
-									20 + self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
-								)
-							end
-						end
+						-- do
+						-- 	for i, v in ipairs(shape) do
+						-- 		local nV = shape[i+1] or shape[1]
+						-- 		_drawLine(
+						-- 			v, 
+						-- 			nV,
+						-- 			Color3.fromHSV((i-1)/#shape,1,1),
+						-- 			0,
+						-- 			20 + self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
+						-- 		)
+						-- 	end
+						-- end
 
 						local start = tick()
 						local innerRect = ShapeUtil.getInnerBounds(shape, frustum.ViewportSize)
@@ -597,62 +602,92 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			end)
 		end
 	else
+
+
 		self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 			if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
 				prevCF = self.Instance:GetRenderCFrame()
 				local t = tick()
 				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
-
+				local mask = Mask.new() :: Mask<BasePart>
+		
 				local parts: {[number]: BasePart} = {}
+				for i, inst in ipairs(self.Parts) do
+					if frustum:GetIfOverlapFrustum(inst) then
+						inst:AddTag(IN_FRUSTUM_TAG)
+						-- inst:SetAttribute(LAST_SEEN_ATTR_KEY, tick())
+						table.insert(parts, inst)	
+					else
+						inst:RemoveTag(IN_FRUSTUM_TAG)
+					end
+				end
 
 				if not NO_DEBUG_RENDER then
 					self._Maid._frustumDraw = frustum:Draw()
 				end
 
-				local rectRegistry: {[BasePart]: Rect} = {}
+				local outerRectRegistry: {[BasePart]: Rect} = {}
+				local innerRectRegistry: {[BasePart]: Rect} = {}
+
 				for i, part in ipairs(parts) do
-					local rect = frustum:GetOuterBlockBounds(part.CFrame, part.Size)
-					rectRegistry[part] = rect
+					local shape = frustum:GetProjectedShape(part.CFrame, part.Size)
+					local outerRect = frustum:GetOuterBlockBounds(shape)
+					local innerRect = frustum:GetOuterBlockBounds(shape)
+					local distance = (part.CFrame.Position - self.Instance.CFrame.Position).Magnitude
+					
+					mask:Register(
+						part,
+						innerRect,
+						outerRect,
+						shape,
+						self.MaxRenderDistance - distance,
+						not part:HasTag(self.NoOccludeTag)
+					)
+
+					outerRectRegistry[part] = outerRect
+					innerRectRegistry[part] = innerRect
 				end
 
-				table.sort(parts, function(a: BasePart, b: BasePart): boolean
-					local aR = rectRegistry[a]
-					local bR = rectRegistry[b]
-					return (aR.Min - aR.Max).Magnitude > (bR.Min - bR.Max).Magnitude
-				end)
-		
-				local tagged = CollectionService:GetTagged(IN_FRUSTUM_TAG)
-				table.sort(tagged, function(a: Instance, b: Instance)
-					local aTick = a:GetAttribute(LAST_SEEN_ATTR_KEY)
-					local bTick = b:GetAttribute(LAST_SEEN_ATTR_KEY)
-					if bTick and aTick then
-						return aTick < bTick
-					elseif bTick then
-						return false
-					elseif aTick then
-						return true
-					else
-						return false
-					end
-				end)
-
-				for i, inst in ipairs(tagged) do
-					if i > PROCESS_LIMIT then
-						break
-					end
-					local lastSeen = inst:GetAttribute(LAST_SEEN_ATTR_KEY)
-					if lastSeen then
-						if t-lastSeen > self.ObscureDelay then
-							if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
-								CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
-							end
+				for i, part in ipairs(parts) do
+					if mask:GetIfOccluded(part) then
+						-- if not part:HasTag(OBSCURED_TAG) then
+						-- 	part:AddTag(OBSCURED_TAG)
+						-- end
+						if part:HasTag(VISIBLE_TAG) then
+							part:RemoveTag(VISIBLE_TAG)
 						end
 					else
-						if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
-							CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+						if not part:HasTag(VISIBLE_TAG) then
+							part:AddTag(VISIBLE_TAG)
 						end
+						-- if part:HasTag(OBSCURED_TAG) then
+						-- 	part:AddTag(OBSCURED_TAG)
+						-- end
 					end
 				end
+
+				-- local unloadQueue: Queue<BasePart> = Queue.new()
+				-- unloadQueue.IsSorted = true
+
+				-- for i, inst in ipairs(CollectionService:GetTagged(IN_FRUSTUM_TAG)) do
+				-- 	assert(inst:IsA("BasePart"))
+				-- 	unloadQueue:Add(inst, -(inst:GetAttribute(LAST_SEEN_ATTR_KEY) or 0))
+				-- end
+				
+				-- unloadQueue:Step(deltaTime * 0.2, function(inst: BasePart)
+				-- 	local lastSeen = inst:GetAttribute(LAST_SEEN_ATTR_KEY)
+				-- 	if lastSeen then
+				-- 		if t-lastSeen > self.ObscureDelay then
+				-- 			if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+				-- 				CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+				-- 			end
+				-- 		end
+				-- 	else
+				-- 		if CollectionService:HasTag(inst, IN_FRUSTUM_TAG) then
+				-- 			CollectionService:RemoveTag(inst, IN_FRUSTUM_TAG)
+				-- 		end
+				-- 	end
+				-- end)
 			end
 		end))	
 	end

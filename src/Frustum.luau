@@ -70,9 +70,9 @@ export type Frustum = {
 	GetIfSphereRendered: (self: Frustum, origin: Vector3, radius: number) -> boolean,
 	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3) -> boolean,
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
-	GetIfPartRendered: (self: Frustum, part: BasePart) -> boolean,
-	GetOuterBlockBounds: (self: Frustum, cf: CFrame, size: Vector3) -> Rect,
-	GetInnerBlockBounds: (self: Frustum, cf: CFrame, size: Vector3) -> Rect,
+	GetIfOverlapFrustum: (self: Frustum, part: BasePart) -> boolean,
+	GetOuterBlockBounds: (self: Frustum, perimeter: {[number]: Vector2}) -> Rect,
+	GetInnerBlockBounds: (self: Frustum, perimeter: {[number]: Vector2}) -> Rect,
 	Draw: (self: Frustum) -> Folder,
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
@@ -196,10 +196,10 @@ function Frustum:GetViewportPosition(point: Vector3): (Vector3, boolean, boolean
 	-- if USE_CUSTOM_VIEWPORT_MATH then
 	return PerspectiveUtil.toViewportPoint(
 		point,
-		workspace.CurrentCamera.CFrame,
-		workspace.CurrentCamera.FieldOfView,
-		workspace.CurrentCamera.ViewportSize,
-		workspace.CurrentCamera.NearPlaneZ
+		self.CFrame,
+		self.Camera.FieldOfView,
+		self.ViewportSize,
+		self.NearPlaneZ
 	)
 	-- else
 	-- 	return self.Camera:WorldToViewportPoint(point)
@@ -384,12 +384,12 @@ function Frustum:GetProjectedShape(cf: CFrame, size: Vector3): {[number]: Vector
 	return points
 end
 
-function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
-	return ShapeUtil.getOuterBounds(self:GetProjectedShape(cf, size))
+function Frustum:GetOuterBlockBounds(perimeter: {[number]: Vector2}): Rect
+	return ShapeUtil.getOuterBounds(perimeter)
 end
 
-function Frustum:GetInnerBlockBounds(cf: CFrame, size: Vector3): Rect
-	return ShapeUtil.getInnerBounds(self:GetProjectedShape(cf, size), self.ViewportSize)
+function Frustum:GetInnerBlockBounds(perimeter: {[number]: Vector2}): Rect
+	return ShapeUtil.getInnerBounds(perimeter, self.ViewportSize)
 end
 
 function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean
@@ -507,7 +507,7 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 	return false
 end
 
-function Frustum:GetIfPartRendered(part: BasePart)
+function Frustum:GetIfOverlapFrustum(part: BasePart)
 	if not USE_EXACT_CULLING then
 		return self:GetIfSphereRendered(part.Position, part.Size.Magnitude/2)
 	else

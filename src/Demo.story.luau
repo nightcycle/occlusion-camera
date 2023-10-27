@@ -17,20 +17,24 @@ local VISIBLE_TAG = Config.Tag.Visible
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
 local FIELD_OF_VIEW = 55
 local MAX_RENDER_DISTANCE = 2048
-local USE_REAL_CAMERA = false
+local USE_REAL_CAMERA = true
+local PERFORMANCE_TEST = false
+
 -- Variables
 -- References
-local Map = workspace:WaitForChild("Map")
+local Map = workspace:WaitForChild("MediumMap")
 -- Class
 return function(frame: Frame)
 	local maid = Maid.new()
 			
-	local highlights: {[BasePart]: SelectionBox} = {
+	Config.Debug.NoDebugRender = true -- PERFORMANCE_TEST
 
-	}
-	
+	local isDead = false
 	task.spawn(function()
+		task.wait(1)
+		if isDead then return end
 		local OcclusionCamera = require(_Package)
+
 
 		local part = workspace:FindFirstChild("CameraHolder")
 		if not part then
@@ -53,7 +57,7 @@ return function(frame: Frame)
 			camera = workspace.CurrentCamera
 		else
 			camera = maid:GiveTask(Instance.new("Camera"))
-			camera:SetAttribute("NearPlaneZ", -50)
+			camera:SetAttribute("NearPlaneZ", -5)
 			camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
 			camera.FieldOfView = FIELD_OF_VIEW
 			camera.Parent = part
@@ -77,42 +81,42 @@ return function(frame: Frame)
 			end
 		end))
 
-		maid:GiveTask(oCam.OnPartEnterFrustum:Connect(function(part: BasePart)
-			if not highlights[part] then
-				local box = Instance.new("SelectionBox")
-				box.Adornee = part
-				box.SurfaceTransparency = 0.75
-				box.SurfaceColor3 = Color3.new(1,1,1)
-				box.LineThickness = 2
-				box.Color3 = box.SurfaceColor3
-				box.Parent = part
-				highlights[part] = box
+		-- maid:GiveTask(oCam.OnPartEnterFrustum:Connect(function(part: BasePart)
+		-- 	part.Color = Color3.new(1,1,0)
+		-- end))
+
+		-- maid:GiveTask(oCam.OnObscurePart:Connect(function(part: BasePart)
+		-- 	part.Color = Color3.new(1,0,0)
+		-- end))
+		-- maid:GiveTask(oCam.OnViewPart:Connect(function(part: BasePart)
+		-- 	part.Color = Color3.new(0,0,1)
+		
+		-- end))
+		-- maid:GiveTask(oCam.OnPartExitFrustum:Connect(function(part: BasePart)
+		-- 	part.Color = Color3.new(0,0,0)
+		-- end))
+
+		local parts: {[number]: BasePart} = Map:GetChildren() :: any
+
+		maid:GiveTask(RunService.RenderStepped:Connect(function()
+			for i, part in ipairs(parts) do
+				if oCam:GetIfPartIsInFrustum(part) then
+					if not oCam:GetIfPartIsVisible(part) then
+						part.Color = Color3.new(1,0,0)
+					else
+						part.Color = Color3.new(0,0,1)
+					end
+				else
+					part.Color = Color3.new(0,0,0)
+				end
 			end
 		end))
 
-		maid:GiveTask(oCam.OnObscurePart:Connect(function(part: BasePart)
-			local box = highlights[part]
-			if box then
-				box.SurfaceColor3 = Color3.new(0,0,1)
-				box.Color3 = box.SurfaceColor3
-			end
-		end))
-		maid:GiveTask(oCam.OnViewPart:Connect(function(part: BasePart)
-			local box = highlights[part]
-			if box then
-				box.SurfaceColor3 = Color3.new(1,0,0)
-				box.Color3 = box.SurfaceColor3
-			end
-		end))
-		maid:GiveTask(oCam.OnPartExitFrustum:Connect(function(part: BasePart)
-			local box = highlights[part]
-			if box then
-				box:Destroy()
-				highlights[part] = nil
-			end
-		end))
+		oCam.Parts = parts
+
 	end)
 	return function()
+		isDead = true
 		maid:Destroy()
 		for i, inst in ipairs(CollectionService:GetTagged(IN_FRUSTUM_TAG)) do
 			CollectionService:RemoveTag(inst, OBSCURED_TAG)
@@ -128,10 +132,6 @@ return function(frame: Frame)
 					decal.Color3 = inst.Color
 				end
 			end
-		end
-		for k, v in pairs(highlights) do
-			highlights[k] = nil
-			v:Destroy()
 		end
 	end
 end
