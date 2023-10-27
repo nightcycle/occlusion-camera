@@ -21,14 +21,17 @@ local BIG = 100000
 local function getIfFits(container: Rect, item: Rect): boolean
 	return container.Min.X <= item.Min.X and container.Max.X >= item.Max.X and container.Min.Y <= item.Min.Y and container.Max.Y >= item.Max.Y
 end
-local function getIfOverlaps(a: Rect, b: Rect): boolean
-	return (a.Min.X < b.Min.X + b.Width) and
-           (a.Min.X + a.Width > b.Min.X) and
-           (a.Min.Y < b.Min.Y + b.Height) and
-           (a.Min.Y + a.Height > b.Min.Y)
-end
+-- local function getIfOverlaps(a: Rect, b: Rect): boolean
+-- 	return (a.Min.X < b.Min.X + b.Width) and
+--            (a.Min.X + a.Width > b.Min.X) and
+--            (a.Min.Y < b.Min.Y + b.Height) and
+--            (a.Min.Y + a.Height > b.Min.Y)
+-- end
 
-function getLineIntersection(origin: Vector2, direction: Vector2, a: Vector2, b: Vector2): Vector2?
+-- Class
+local Util = {}
+
+function Util.getLineIntersection(origin: Vector2, direction: Vector2, a: Vector2, b: Vector2): Vector2?
 	local x1: number, y1: number = origin.X, origin.Y
 	local x2: number, y2: number = x1 + direction.X, y1 + direction.Y
 	local x3: number, y3: number = a.X, a.Y
@@ -55,10 +58,205 @@ function getLineIntersection(origin: Vector2, direction: Vector2, a: Vector2, b:
 	    return nil
 	end
 end
- 
 
--- Class
-local Util = {}
+function Util._getInnerBoundRegion(perimeter: {[number]: Vector2}): Rect
+	local center = Vector2.zero
+	for i, v in ipairs(perimeter) do
+		center += v
+	end
+
+	center /= #perimeter
+
+	local function renderPoint(point: Vector2, size: number): Rect
+		return Rect.new(
+			point - Vector2.one * size,
+			point + Vector2.one * size
+		)
+	end
+
+	local function getIntersection(origin: Vector2, normal: Vector2): IntersectionData?
+		for i, v in ipairs(perimeter) do
+			local nV = perimeter[i+1] or perimeter[1]
+			local intersection = Util.getLineIntersection(
+				origin,
+				normal * BIG,
+				v,
+				nV
+			)
+			if intersection then
+				return {
+					Intersection = intersection,
+					A = v,
+					B = nV
+				}
+			end
+		end
+		return nil
+	end
+
+	local out: {[Rect]: FillType} = {
+		[renderPoint(center, 10)] = "Line",
+	}
+
+	local minV2: Vector2?
+
+	do
+		local hit = getIntersection(center, Vector2.new(1,0))
+		if hit then
+			minV2 = Vector2.new(
+				math.min(hit.A.X, hit.B.X),
+				math.min(hit.A.Y, hit.B.Y)
+			)
+		end
+	end
+
+	local maxV2: Vector2?
+
+	do
+		local hit = getIntersection(center, Vector2.new(-1,0))
+		if hit then
+			maxV2 = Vector2.new(
+				math.max(hit.A.X, hit.B.X),
+				math.max(hit.A.Y, hit.B.Y)
+			)
+		end
+	end
+
+	if minV2 and maxV2 then
+		local maxX = maxV2.X
+		local maxY = maxV2.Y
+		local minX = minV2.X
+		local minY = minV2.Y
+		do
+			local maxYR: number?
+			do
+				out[renderPoint(
+					Vector2.new(
+						minV2.X,
+						center.Y
+					), 
+					15
+				)] = "Line"
+				
+				local hit = getIntersection(Vector2.new(
+					minV2.X,
+					center.Y
+				), Vector2.new(0, 1))
+
+				if hit then
+					out[renderPoint(
+						hit.Intersection, 
+						15
+					)] = "Empty"
+					maxYR = hit.Intersection.Y
+				end
+			end
+	
+			local maxYL: number?
+			do
+				out[renderPoint(
+					Vector2.new(
+						maxV2.X,
+						center.Y
+					), 
+					15
+				)] = "Line"
+
+				local hit = getIntersection(Vector2.new(
+					maxV2.X,
+					center.Y
+				), Vector2.new(0, 1))
+
+				if hit then
+					out[renderPoint(
+						hit.Intersection, 
+						15
+					)] = "Empty"
+					maxYL = hit.Intersection.Y
+				end
+			end
+
+			if maxYL and maxYR then
+				maxY = math.min(maxYL, maxYR)
+			elseif maxYL then
+				maxY = maxYL
+			elseif maxYR then
+				maxY = maxYR
+			end
+		end
+		do
+			local minYR: number?
+			do
+				out[renderPoint(
+					Vector2.new(
+						minV2.X,
+						center.Y
+					), 
+					15
+				)] = "Line"
+				
+				local hit = getIntersection(Vector2.new(
+					minV2.X,
+					center.Y
+				), Vector2.new(0, -1))
+
+				if hit then
+					out[renderPoint(
+						hit.Intersection, 
+						15
+					)] = "Empty"
+					minYR = hit.Intersection.Y
+				end
+			end
+	
+			local minYL: number?
+			do
+				out[renderPoint(
+					Vector2.new(
+						maxV2.X,
+						center.Y
+					), 
+					15
+				)] = "Line"
+
+				local hit = getIntersection(Vector2.new(
+					maxV2.X,
+					center.Y
+				), Vector2.new(0, -1))
+
+				if hit then
+					out[renderPoint(
+						hit.Intersection, 
+						15
+					)] = "Empty"
+					minYL = hit.Intersection.Y
+				end
+			end
+
+			if minYL and minYR then
+				minY = math.max(minYL, minYR)
+			elseif minYL then
+				minY = minYL
+			elseif minYR then
+				minY = minYR
+			end
+		end
+
+		return Rect.new(
+			Vector2.new(
+				math.round(minX), 
+				math.round(minY)
+			), 
+			Vector2.new(
+				math.round(maxX), 
+				math.round(maxY)
+			)
+		)
+	else
+		return Rect.new(Vector2.zero, Vector2.zero)
+	end
+end
+
 
 function Util.getInnerBounds(perimeter: {[number]: Vector2}): Rect
 	local center = Vector2.zero
@@ -78,7 +276,7 @@ function Util.getInnerBounds(perimeter: {[number]: Vector2}): Rect
 	local function getIntersection(origin: Vector2, normal: Vector2): IntersectionData?
 		for i, v in ipairs(perimeter) do
 			local nV = perimeter[i+1] or perimeter[1]
-			local intersection = getLineIntersection(
+			local intersection = Util.getLineIntersection(
 				origin,
 				normal * BIG,
 				v,
@@ -304,38 +502,18 @@ end
 
 function Util.getVisibleRects(focus: Rect, filters: {[number]: Rect}): {[number]: Rect}
 
-	local constrainedFilters: {[number]: Rect} = {}
-	for i, filter in ipairs(filters) do
-		if getIfFits(filter, focus) then
-			return {}
-		end
-		local min = Vector2.new(
-			math.max(focus.Min.X, filter.Min.X),
-			math.max(focus.Min.Y, filter.Min.Y)
-		)
-		local max = Vector2.new(
-			math.min(focus.Max.X, filter.Max.X),
-			math.min(focus.Max.Y, filter.Max.Y)
-		)
-		if max.X > min.X and max.Y > min.Y then
-			table.insert(constrainedFilters, Rect.new(min, max))
-		end
-	end
+	local allRects: {[number]: Rect} = table.clone(filters)
+	table.insert(allRects, focus)
 
-	local xLineRegistry: {[number]: {[number]: Rect}} = {
-		[focus.Max.X] = {},
-		[focus.Min.X] = {},
-	}
-	local yLineRegistry: {[number]: {[number]: Rect}} = {
-		[focus.Max.Y] = {},
-		[focus.Min.Y] = {},
-	}
 
-	for i, filter in ipairs(constrainedFilters) do
-		xLineRegistry[filter.Min.X] = {}
-		xLineRegistry[filter.Max.X] = {}
-		yLineRegistry[filter.Min.Y] = {}
-		yLineRegistry[filter.Max.Y] = {}
+	local xLineRegistry: {[number]: true} = {}
+	local yLineRegistry: {[number]: true} = {}
+
+	for i, rect in ipairs(allRects) do
+		xLineRegistry[rect.Min.X] = true
+		xLineRegistry[rect.Max.X] = true
+		yLineRegistry[rect.Min.Y] = true
+		yLineRegistry[rect.Max.Y] = true
 	end
 
 	local xList = TableUtil.keys(xLineRegistry)
@@ -343,7 +521,18 @@ function Util.getVisibleRects(focus: Rect, filters: {[number]: Rect}): {[number]
 	table.sort(xList)
 	table.sort(yList)
 
-	local cellRegistry: {[Rect]: true} = {}
+	local function getIfFiltered(rect: Rect): boolean
+		local isFiltered = false
+		for i, filter in ipairs(filters) do
+			if getIfFits(filter, rect) then
+				isFiltered = true
+				break
+			end
+		end
+		return isFiltered
+	end
+
+	local focusCells: {[number]: Rect} = {}
 	for i, x in ipairs(xList) do
 		for j, y in ipairs(yList) do
 			local nX = xList[i+1]
@@ -353,45 +542,84 @@ function Util.getVisibleRects(focus: Rect, filters: {[number]: Rect}): {[number]
 					Vector2.new(x,y),
 					Vector2.new(nX,nY)
 				)
-				cellRegistry[rect] = true
+				if getIfFits(focus, rect) then
+					if not getIfFiltered(rect) then
+						table.insert(focusCells, rect)					
+					end
+				end
 			end
 		end
 	end
 
-	for i, filter in ipairs(constrainedFilters) do
-		for cell, _ in pairs(cellRegistry) do
-			if getIfFits(filter, cell) then
-				cellRegistry[cell] = nil
-			end
-		end
-	end
-
-	-- for i, filter in ipairs(constrainedFilters) do
-
-	-- 	local iMinX = table.find(xList, filter.Min.X)
-	-- 	local iMaxX = table.find(xList, filter.Max.X)
-	-- 	local jMinY = table.find(yList, filter.Min.Y)
-	-- 	local jMaxY = table.find(yList, filter.Max.Y)
-	-- 	assert(iMinX and iMaxX and jMinY and jMaxY)
-		
-	-- 	for x=iMinX, iMaxX do
-	-- 		for y=jMinY, jMaxY do
-	-- 			local rect = Rect.new(
-	-- 				Vector2.new(
-	-- 					xList[iMinX],
-	-- 					yList[jMinY]
-	-- 				),
-	-- 				Vector2.new(
-	-- 					xList[iMaxX],
-	-- 					yList[jMaxY]
-	-- 				)
-	-- 			)
-	-- 			cellRegistry[rect] = nil
-	-- 		end
-	-- 	end
-	-- end
-	 
-	return TableUtil.keys(cellRegistry)
+	return focusCells
 end
+
+-- function Util.getVisibleRects(focus: Rect, filters: {[number]: Rect}): {[number]: Rect}
+
+-- 	local constrainedFilters: {[number]: Rect} = {}
+-- 	for i, filter in ipairs(filters) do
+-- 		if getIfFits(filter, focus) then
+-- 			return {}
+-- 		end
+-- 		local min = Vector2.new(
+-- 			math.max(focus.Min.X, filter.Min.X),
+-- 			math.max(focus.Min.Y, filter.Min.Y)
+-- 		)
+-- 		local max = Vector2.new(
+-- 			math.min(focus.Max.X, filter.Max.X),
+-- 			math.min(focus.Max.Y, filter.Max.Y)
+-- 		)
+-- 		if max.X > min.X and max.Y > min.Y then
+-- 			table.insert(constrainedFilters, Rect.new(min, max))
+-- 		end
+-- 	end
+
+-- 	local xLineRegistry: {[number]: {[number]: Rect}} = {
+-- 		[focus.Max.X] = {},
+-- 		[focus.Min.X] = {},
+-- 	}
+-- 	local yLineRegistry: {[number]: {[number]: Rect}} = {
+-- 		[focus.Max.Y] = {},
+-- 		[focus.Min.Y] = {},
+-- 	}
+	
+
+-- 	for i, filter in ipairs(constrainedFilters) do
+-- 		xLineRegistry[filter.Min.X] = {}
+-- 		xLineRegistry[filter.Max.X] = {}
+-- 		yLineRegistry[filter.Min.Y] = {}
+-- 		yLineRegistry[filter.Max.Y] = {}
+-- 	end
+
+-- 	local xList = TableUtil.keys(xLineRegistry)
+-- 	local yList = TableUtil.keys(yLineRegistry)
+-- 	table.sort(xList)
+-- 	table.sort(yList)
+
+-- 	local cellRegistry: {[Rect]: true} = {}
+-- 	for i, x in ipairs(xList) do
+-- 		for j, y in ipairs(yList) do
+-- 			local nX = xList[i+1]
+-- 			local nY = yList[j+1]
+-- 			if nX and nY then
+-- 				local rect = Rect.new(
+-- 					Vector2.new(x,y),
+-- 					Vector2.new(nX,nY)
+-- 				)
+-- 				cellRegistry[rect] = true
+-- 			end
+-- 		end
+-- 	end
+
+-- 	for i, filter in ipairs(constrainedFilters) do
+-- 		for cell, _ in pairs(cellRegistry) do
+-- 			if getIfFits(filter, cell) then
+-- 				cellRegistry[cell] = nil
+-- 			end
+-- 		end
+-- 	end
+
+-- 	return TableUtil.keys(cellRegistry)
+-- end
 
 return Util

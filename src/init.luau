@@ -5,6 +5,7 @@ local _Packages = _Package.Parent
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 -- Packages
 local ShapeUtil = require(ReplicatedStorage.Packages.package.ShapeUtil)
@@ -276,7 +277,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					end
 				end
 			end)
-			self._Maid:GiveTask(RunService.RenderStepped:Connect(function(deltaTime: number)
+			local function update(deltaTime: number)
 				local screen = self._Maid:GiveTask(Instance.new("ScreenGui"))
 				screen.Parent = game:GetService("CoreGui")
 
@@ -291,6 +292,47 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				local visiblePartList: {[number]: BasePart} = {}
 
 				local mask = Mask.new() :: Mask<BasePart>
+
+				local function _drawRect(rect: Rect, color: Color3, trans: number, zIndex: number)
+					local frame = Instance.new("Frame")
+					frame.BackgroundTransparency = trans
+					frame.ZIndex = zIndex
+					frame.BackgroundColor3 =  color
+					frame.BorderSizePixel = 1
+					frame.Position = UDim2.fromOffset(rect.Min.X+frame.BorderSizePixel, rect.Min.Y+frame.BorderSizePixel)
+					frame.Size = UDim2.fromOffset(rect.Width-frame.BorderSizePixel*2, rect.Height-frame.BorderSizePixel*2)
+					frame.Parent = screen
+				end
+
+				local function _drawLine(a: Vector2, b: Vector2, color: Color3, trans: number, zIndex: number)
+					local mid = a:Lerp(b, 0.5)
+					local offset = b - a
+					do
+						local frame = Instance.new("Frame")
+						frame.BackgroundTransparency = trans
+						frame.ZIndex = zIndex
+						frame.BackgroundColor3 = color
+						frame.Position = UDim2.fromOffset(mid.X, mid.Y)
+						frame.AnchorPoint = Vector2.new(0.5, 0.5)
+						frame.Rotation = math.deg(math.atan2(offset.Y, offset.X)) + 90
+						frame.Size = UDim2.fromOffset(5, offset.Magnitude)
+						frame.Parent = screen
+					end
+
+					local reps = math.clamp(math.floor(offset.Magnitude / 25), 1, 50)
+					for i=0, reps do
+						local h,_s,_v = color:ToHSV()
+						local pos = a + i * offset / reps
+						local frame = Instance.new("Frame")
+						frame.BackgroundTransparency = trans * 0.5
+						frame.ZIndex = zIndex + 1
+						frame.BackgroundColor3 = Color3.fromHSV(h,1, 0.25 + 0.75 * (i/reps))
+						frame.BorderSizePixel = 1
+						frame.Position = UDim2.fromOffset(pos.X, pos.Y)
+						frame.Size = UDim2.fromOffset(10, 10)
+						frame.Parent = screen
+					end
+				end
 
 				do
 					local shapeMeasurements: {[string]: {[number]: number}} = {}
@@ -375,6 +417,19 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					for part, shape in pairs(partShapeRegistry) do
 						innerMeasurements[part.Name] = innerMeasurements[part.Name] or {}
 
+						do
+							for i, v in ipairs(shape) do
+								local nV = shape[i+1] or shape[1]
+								_drawLine(
+									v, 
+									nV,
+									Color3.fromHSV((i-1)/#shape,1,1),
+									0,
+									20 + self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
+								)
+							end
+						end
+
 						local start = tick()
 						local innerRect = ShapeUtil.getInnerBounds(shape)
 						local finish = tick()				
@@ -416,14 +471,16 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				do
 					local maskMeasurements: {[string]: {[number]: number}} = {}
 
-					for part, rect in pairs(partOuterRectRegistry) do
+					for part, outerRect in pairs(partOuterRectRegistry) do
+						local innerRect = partInnerRectRegistry[part]
 						maskMeasurements[part.Name] = maskMeasurements[part.Name] or {}
 
 						local start = tick()
 
 						mask:Register(
 							part,
-							rect,
+							innerRect,
+							outerRect,
 							partShapeRegistry[part],
 							self.MaxRenderDistance - partDistanceRegistry[part],
 							true
@@ -459,7 +516,9 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				do
 					local searchMeasurements: {[string]: {[number]: number}} = {}
 				
-					for part, rect in pairs(partOuterRectRegistry) do
+
+					for part, outerRect in pairs(partOuterRectRegistry) do
+						local innerRect = partInnerRectRegistry[part]
 						searchMeasurements[part.Name] = searchMeasurements[part.Name] or {}
 
 						local start = tick()
@@ -467,42 +526,13 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 
 						local finish = tick()
 
-						for i, v in ipairs(partShapeRegistry[part]) do
-							do
-								local frame = Instance.new("Frame")
-								frame.BackgroundTransparency = 0
-								frame.ZIndex = 10 + self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
-								frame.BackgroundColor3 =  Color3.new(1,1,0)
-								frame.Position = UDim2.fromOffset(v.X, v.Y)
-								frame.AnchorPoint = Vector2.new(0.5, 0.5)
-								frame.Size = UDim2.fromOffset(5, 5)
-								frame.Parent = screen
-							end
-
-							do
-								local nV = partShapeRegistry[part][i+1] or partShapeRegistry[part][1]
-								local mid = v:Lerp(nV, 0.5)
-								local offset = (nV - v)
-								local frame = Instance.new("Frame")
-								frame.BackgroundTransparency = 0
-								frame.ZIndex = 20 + self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
-								frame.BackgroundColor3 =  Color3.new(1,1,0)
-								frame.Position = UDim2.fromOffset(mid.X, mid.Y)
-								frame.AnchorPoint = Vector2.new(0.5, 0.5)
-								frame.Rotation = math.deg(math.atan2(offset.Y, offset.X)) + 90
-								frame.Size = UDim2.fromOffset(5, offset.Magnitude)
-								frame.Parent = screen
-							end
-						end
-
 						-- do
-						-- 	local frame = Instance.new("Frame")
-						-- 	frame.BackgroundTransparency = if not isOccluded then 0.8 else 0.2
-						-- 	frame.ZIndex = self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
-						-- 	frame.BackgroundColor3 =  if not isOccluded then Color3.new(0, 1, 1) else Color3.new(1,0,0)
-						-- 	frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-						-- 	frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-						-- 	frame.Parent = screen
+						-- 	_drawRect(
+						-- 		innerRect,
+						-- 		if not isOccluded then Color3.new(0, 1, 1) else Color3.new(1,0,0),
+						-- 		if not isOccluded then 0.4 else 0.1,
+						-- 		self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
+						-- 	)
 						-- end
 
 						table.insert(searchMeasurements[part.Name], finish - start)
@@ -531,133 +561,29 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 
 				end
 
-				-- do
-				-- 	local function debugTree(dir: Directory<BasePart>, depth: number)
-				-- 		if depth > 0 then
-				-- 			local frame = Instance.new("Frame")
-				-- 			frame.BackgroundTransparency = 0.8
-				-- 			frame.ZIndex = depth + 5
-				-- 			frame.BackgroundColor3 = Color3.fromHSV(
-				-- 				if depth == 1 then 0 else 0.5,
-				-- 				1, --1/depth,
-				-- 				1
-				-- 			)
-				-- 			frame.BorderSizePixel = 3
-				-- 			frame.Position = UDim2.fromOffset(dir.Region.Min.X, dir.Region.Min.Y)
-				-- 			frame.Size = UDim2.fromOffset(dir.Region.Width, dir.Region.Height)
-	
-				-- 			frame.Parent = screen
-				-- 		end
-				-- 		for k, v in pairs(dir.SubDirectories) do
-				-- 			debugTree(v, depth+1)
-				-- 		end
-				-- 	end
-				-- 	debugTree(rTree._Master, 0)
-				-- end
-
-				-- do
-				-- 	local measurements: {[string]: {[number]: number}} = {}
-
-				-- 	for part, rect in pairs(partOuterRectRegistry) do
-				-- 		measurements[part.Name] = measurements[part.Name] or {}
-
-				-- 		do
-				-- 			local start = tick()
-
-				-- 			local hits = rTree:SearchUniqueOnly(rect)
-
-				-- 			local isObscured = true
-				-- 			do
-				-- 				for i, hit in ipairs(hits) do
-				-- 					if hit == part then
-				-- 						isObscured = false
-				-- 						break
-				-- 					end
-				-- 				end
-				-- 			end
-			
-				-- 			print(`h: {#hits} = {isObscured}`)
-				-- 			local finish = tick()
-				-- 			-- local shape = partShapeRegistry[part]
-				-- 			local color = if isObscured then Color3.new(0,0,1) else Color3.new(1,1,1)
-				-- 			if DEBUG_OCCLUSION and not NO_DEBUG_RENDER then
-				-- 				do
-				-- 					local frame = Instance.new("Frame")
-				-- 					frame.BackgroundTransparency = 0.7
-				-- 					frame.ZIndex = 10^6 - (rect.Width * rect.Height)
-				-- 					frame.BackgroundColor3 =  color
-				-- 					frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-				-- 					frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-				-- 					frame.Parent = screen
-				-- 				end
-				-- 				-- for i, hit in ipairs(hits) do
-				-- 				-- 	do
-				-- 				-- 		local frame = Instance.new("Frame")
-				-- 				-- 		frame.BackgroundTransparency = i
-				-- 				-- 		frame.ZIndex = 10
-				-- 				-- 		frame.BackgroundColor3 =  if hit ~= part then color else Color3.new(0.5,0.5,0.5)
-				-- 				-- 		frame.Position = UDim2.fromOffset(rect.Min.X, rect.Min.Y)
-				-- 				-- 		frame.Size = UDim2.fromOffset(rect.Width, rect.Height)
-				-- 				-- 		frame.Parent = screen
-				-- 				-- 	end
-				-- 				-- 	if hit ~= part then
-				-- 				-- 	end
-				-- 				-- end
-
-				-- 				-- local function debugLine(a: Vector2, b: Vector2)
-				-- 				-- 	local pos = a:Lerp(b, 0.5)
-				-- 				-- 	local offset = (b-a)
-				-- 				-- 	local frame = Instance.new("Frame")
-				-- 				-- 	frame.BackgroundTransparency = 00.5
-				-- 				-- 	frame.ZIndex = 10
-				-- 				-- 	frame.BorderSizePixel = 0
-				-- 				-- 	frame.AnchorPoint = Vector2.new(0.5,0.5)
-				-- 				-- 	frame.Position = UDim2.fromOffset(pos.X, pos.Y)
-				-- 				-- 	frame.BackgroundColor3 = color --Color3.new(1,1,1)
-				-- 				-- 	frame.Size = UDim2.fromOffset(5, offset.Magnitude)
-				-- 				-- 	frame.Rotation = math.deg(math.atan2(offset.X, -offset.Y))
-				-- 				-- 	frame.Parent = screen
-				-- 				-- end
-
-				-- 				-- for j, v in ipairs(shape) do
-				-- 				-- 	local pV = shape[j-1] or shape[#shape]
-				-- 				-- 	assert(pV)
-				-- 				-- 	debugLine(pV, v)
-				-- 				-- end
-				-- 			end
-
-				-- 			part.Color = color
-
-				-- 			table.insert(measurements[part.Name], finish - start)
-				-- 		end
-
-				-- 		-- break
-				-- 	end
-		
-				-- 	do
-				-- 		local netSum = 0
-				-- 		local netCount = 0
-				-- 		for k, vList in pairs(measurements) do
-				-- 			local sum = 0
-				-- 			local count = #vList
-				-- 			for i, v in ipairs(vList) do
-				-- 				sum += v
-				-- 			end
-				-- 			netSum += sum
-				-- 			netCount += count
-				-- 			local duration = sum/count
-				-- 			self.Instance:SetAttribute(`_search_{k}_ms`, toMilliseconds(duration))
-				-- 			self.Instance:SetAttribute(`_search_{k}_limit`, math.floor(RENDER_DURATION/duration))
-				-- 		end
-	
-				-- 		local netDuration = netSum/netCount
-				-- 		self.Instance:SetAttribute(`search_net_ms`, toMilliseconds(netDuration))
-				-- 		self.Instance:SetAttribute(`search_net_limit`, math.floor(RENDER_DURATION/netDuration))
-				-- 	end
-				-- end
 				
 				self._Maid._screen = screen
+			end
+			local isPlaying = false
+			self._Maid:GiveTask(RunService.RenderStepped:Connect(function(deltaTime: number)
+				if isPlaying then
+					update(deltaTime)
+				end
 			end))
+			self._Maid:GiveTask(UserInputService.InputBegan:Connect(function(inputObject: InputObject)
+				if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
+					isPlaying = false
+					update(1/60)
+				elseif inputObject.UserInputType == Enum.UserInputType.MouseButton2 then
+					isPlaying = true
+				end
+			end))
+			self._Maid:GiveTask(UserInputService.InputEnded:Connect(function(inputObject: InputObject)
+				if inputObject.UserInputType == Enum.UserInputType.MouseButton2 then
+					isPlaying = false
+				end
+			end))
+			update(1/60)
 		end
 	else
 		self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)

@@ -7,6 +7,8 @@ local _Packages = _Package.Parent
 -- Packages
 
 -- Modules
+local ShapeUtil = require(_Package:WaitForChild("ShapeUtil"))
+
 -- Types
 type CornerId = "XYZ" | "xYZ" | "XYz" | "xYz" | "XyZ" | "xyZ" | "Xyz" | "xyz"
 type EdgeId = "YZ" | "Yz" | "yZ" |  "yz" | "XZ" | "xZ" | "Xz" | "xz" | "XY" | "xY" | "Xy" | "xy"
@@ -260,6 +262,7 @@ function getCenterId(cf: CFrame, size: Vector3, cameraCF: CFrame): PerspectiveId
 	return `{x}{y}{z}` :: PerspectiveId
 end
 
+
 function getWorldPosition(cf: CFrame, size: Vector3, cornerId: CornerId): Vector3
 	local offset = CORNER_OFFSET[cornerId] * size
 	return cf:PointToWorldSpace(offset)
@@ -301,24 +304,126 @@ function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraCF: CFrame): {[
 
 	return triangles
 end
+
+-- local debugEnabled = false
+function Util.toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Vector2, nearPlaneZ: number): (Vector3, boolean, boolean)
+
+	-- print(`point: {point}`)
+	-- print(`cf: {cf.Position}`)
+	-- print(`wOffset: {point-cf.Position}`)
+
+	-- if debugEnabled then print(`vSize: {vSize}`) end
+
+	-- if debugEnabled then print(`nearPlaneZ: {nearPlaneZ}`) end
+
+	local aspectRatio = vSize.X / vSize.Y
+	-- if debugEnabled then print(`aspectRatio: {aspectRatio}`) end
+
+	local halfFieldOfView = math.rad(fov) * 0.5
+	-- if debugEnabled then print(`halfFieldOfView: {fov*0.5}`) end
+
+	local offset: Vector3 = cf:PointToObjectSpace(point)
+	-- if debugEnabled then print(`offset: {offset}`) end
+		
+
+	local halfNearPlaneHeight = 2 * math.tan(halfFieldOfView) * -nearPlaneZ / 2
+	-- if debugEnabled then print(`halfNearPlaneHeight: {halfNearPlaneHeight}`) end
+
+	local halfNearPlaneWidth = halfNearPlaneHeight * aspectRatio
+	-- if debugEnabled then print(`halfNearPlaneWidth: {halfNearPlaneWidth}`) end
+
+
+	local xAngle = math.atan2(offset.X, offset.Z)
+	local yAngle = math.atan2(offset.Y, offset.Z)
+
+	-- if debugEnabled then print(`xAngle: {math.deg(xAngle)}`) end
+	-- if debugEnabled then print(`yAngle: {math.deg(yAngle)}`) end
+
+	-- if offset.Z > 0 then
+	-- 	if xAngle < 0 then
+	-- 		xAngle += math.rad(180)
+	-- 	else
+	-- 		xAngle -= math.rad(180)
+	-- 	end
+	-- 	if yAngle < 0 then
+	-- 		yAngle += math.rad(180)
+	-- 	else
+	-- 		yAngle -= math.rad(180)
+	-- 	end
+	-- end
+
+
+	local xTan = math.tan(xAngle)
+	local yTan = math.tan(yAngle)
+
+
+	
+	-- if debugEnabled then print(`xTan: {xTan}`) end
+	-- if debugEnabled then print(`yTan: {yTan}`) end
+
+	local xOffset = (xTan * nearPlaneZ)
+	local yOffset = (yTan * nearPlaneZ)
+	-- if debugEnabled then print(`xOffset: {xOffset}`) end
+	-- if debugEnabled then print(`yOffset: {yOffset}`) end
+
+	
+	local xAlpha = 0.5 * (xOffset / halfNearPlaneWidth) + 0.5
+	local yAlpha = 1 - (0.5 * (yOffset / halfNearPlaneHeight) + 0.5)
+	-- if debugEnabled then print(`xAlpha: {xAlpha}`) end
+	-- if debugEnabled then print(`yAlpha: {yAlpha}`) end
+
+
+
+	local screenPosition = vSize * Vector2.new(xAlpha, yAlpha)
+	-- if debugEnabled then print(`sP1: {screenPosition}`) end
+
+	screenPosition = Vector2.new(math.round(screenPosition.X), math.round(screenPosition.Y))
+	-- if debugEnabled then print(`sP2: {screenPosition}`) end
+
+	local isVisible = math.sign(offset.Z) == -1 and (screenPosition.X >= 0 and screenPosition.X <= vSize.X) and (screenPosition.Y >= 0 and screenPosition.Y <= vSize.Y)
+	-- if debugEnabled then print(`isVisible: {isVisible}`) end
+
+	local out = Vector3.new(screenPosition.X, screenPosition.Y, math.sign(offset.Z))
+	-- if debugEnabled then print(`sPF: {out}`) end
+
+	local isInverted = offset.Y > 0
+
+	return out, isVisible, isInverted
+end
+
 function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraCF: CFrame): {[number]: Vector3}
 
 	local centerId: PerspectiveId = getCenterId(cf, size, cameraCF)
+
 	
 	if centerId:len() == 0 then return {} end
-
-
 
 	local perimeterData = PERIMETER_DATA[centerId]
 	assert(perimeterData, `bad perimeter: {centerId}`)
 
 	local perimeter: {[number]: Vector3} = {}
 
+	print(`\ncenter: {centerId}`)
 	for j, cornerId in ipairs(perimeterData) do
+		local point = getWorldPosition(cf, size, cornerId :: CornerId)
+		table.insert(perimeter, point)
+		
 
-		table.insert(perimeter, getWorldPosition(cf, size, cornerId :: CornerId))
-
+		-- if cornerId == "xYZ" then
+			-- debugEnabled = true
+			-- local screenPoint, isVis = Util.toViewportPoint(
+			-- 	point,
+			-- 	workspace.CurrentCamera.CFrame,
+			-- 	workspace.CurrentCamera.FieldOfView,
+			-- 	workspace.CurrentCamera.ViewportSize,
+			-- 	workspace.CurrentCamera.NearPlaneZ
+			-- )
+			-- debugEnabled = false
+			-- print(`{cornerId} -> {Vector3.new(math.round(screenPoint.X), math.round(screenPoint.Y), math.round(screenPoint.Z))} || {isVis}`)
+		-- end
 	end
+
+	print(`{centerId} = {table.concat(perimeterData, ",")}\n`)
 
 	assert(#perimeter ~= 0)
 
