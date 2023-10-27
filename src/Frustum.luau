@@ -274,191 +274,114 @@ function Frustum:GetBlockShadow(cf: CFrame, size: Vector3): {[number]: Triangle}
 end
 
 function Frustum:GetProjectedShape(cf: CFrame, size: Vector3): {[number]: Vector2}
-	local top: {[number]: Vector2} = {
-		Vector2.new(0,0), 
-		Vector2.new(self.ViewportSize.X,0)
-	}
-	local bottom: {[number]: Vector2}  = {
-		Vector2.new(0,self.ViewportSize.Y), 
-		Vector2.new(self.ViewportSize.X,self.ViewportSize.Y)
-	}
-	local left: {[number]: Vector2}  = {
-		Vector2.new(0,0), 
-		Vector2.new(0,self.ViewportSize.Y)
-	}
-	local right: {[number]: Vector2}  = {
-		Vector2.new(self.ViewportSize.X,0), 
-		Vector2.new(self.ViewportSize.X,self.ViewportSize.Y)
-	}
-	local corners: {[number]: {[number]: {[number]:  {[number]: Vector2}}}} = {
-		[1] = {
-			[1] = {left, top},
-			[0] = {left},
-			[-1] = {left, bottom},
-		},
-		[0] = {
-			[1] = {top},
-			[0] = {},
-			[-1] = {bottom},
-		},
-		[-1] = {
-			[1] = {right, top},
-			[0] = {right},
-			[-1] = {right, bottom},
-		}
-	}
 
-	local diagonal = self.ViewportSize.Magnitude
-
-	local function getBorderHit(origin: Vector2, normal: Vector2): Vector2?
-		local xSign = math.sign(normal.X)
-		local ySign = math.sign(normal.Y)
-		-- local borders = corners[xSign][ySign]
-		for i, border in ipairs({top, bottom, left, right}) do
-			local hit = ShapeUtil.getLineIntersection(
-				origin,
-				normal * diagonal,
-				border[1],
-				border[2]
-			)
-			if hit then
-				return hit
-			end
-		end
-		-- return origin
-	end
-
-	-- local screenRect = Rect.new(
-	-- 	Vector2.new(0,0),
-	-- 	self.ViewportSize
-	-- )
-
-	-- local function getIfPointInScreen(point: Vector2): boolean
-	-- 	return point.X >= screenRect.Min.X and point.X <= screenRect.Max.X and point.Y >= screenRect.Min.Y and point.Y <= screenRect.Max.Y
-	-- end
-
-	-- local inScreen: {[number]: boolean} = {}
-	-- local areAnyOutOfScreen = false
-	-- local areAnyInScreen = false
-	-- local firstOnScreenIndex: number?
-
-	local points = {}
+	local points: {[number]: Vector2} = {}
 	local visibility: {[number]: boolean} = {}
 	local inversion: {[number]: boolean} = {}
 	local offsets: {[number]: Vector3} = {}
 
-	local inversionCount = 0
+	local perimeter = PerspectiveUtil.getWorldPerimeter(cf, size, self.CFrame)
+	local areAnyInverted = false
+	local maxDist = self.ViewportSize.Magnitude
 
-	for i, v in ipairs(PerspectiveUtil.getWorldPerimeter(cf, size, self.CFrame)) do
+	for i, v in ipairs(perimeter) do
+
 		local offset = cf:PointToObjectSpace(v)
 		local surfacePoint, isVisible, isInverted = self:GetViewportPosition(v)
-		print(`{i}, {isVisible}, {isInverted}`)
 		if isInverted then
-			inversionCount += 1
+			areAnyInverted = true
 		end
+		
+		-- if surfacePoint.Magnitude > 0 then
+		-- 	surfacePoint = surfacePoint.Unit * math.min(surfacePoint.Magnitude, maxDist)
+		-- end
+
 		local point = Vector2.new(
 			math.round(surfacePoint.X),
 			math.round(surfacePoint.Y)
 		)
+		points[i] = point
 		visibility[i] = isVisible
 		inversion[i] = isInverted
-		points[i] = point
 		offsets[i] = offset
-		-- table.insert(points, point)
 	end
 
-	print(`inversionCount: {inversionCount}`)
 
-	if #points == 4 then
-		print("A")
-		local finalPoints: {[number]: Vector2} = table.clone(points)
-		print(finalPoints)
-		if inversionCount == 2 then
-			print("B")
-			local iA1: number?, iB1: number?
-			for i, v in pairs(inversion) do
-				if v == true then
-					if iA1 == nil then
-						iA1 = i
-					else
-						iB1 = i
+	if areAnyInverted then
+
+		local finalPoints: {[number]: Vector2} = {}
+
+		local planeOrigin = (self.CFrame * CFrame.new(0,0,self.NearPlaneZ)).Position
+
+		for i, v in ipairs(perimeter) do
+			-- print(`\ni={i}, inversion[i]={inversion[i]}`)
+			if inversion[i] == true then
+				local pI = if i-1 < 1 then #points else i-1
+				-- print(`pi={pI}`)
+				local nI = if i+1 > #points then 1 else i+1
+				-- print(`nI={nI}`)
+
+				local function addPoint(origin: Vector3, direction: Vector3, index: number)
+					-- direction = direction.Unit
+					local intersection = getPlaneIntersection(
+						planeOrigin,
+						-self.CFrame.LookVector,
+						origin,
+						direction
+					)
+					-- print(`intersection={intersection}`)
+					if not intersection then
+						intersection = origin + direction
+						-- print(`maxxed={intersection}`)
 					end
+					assert(intersection)
+
+					local surfacePoint, _isVisible, _isInverted = self:GetViewportPosition(intersection - direction.Unit*0.0015)
+					local sP2 = Vector2.new(
+						(surfacePoint.X),
+						(surfacePoint.Y)
+					)
+					sP2 = ((sP2 - points[index]).Unit * maxDist * 3) + points[index]
+					-- print(`surfacePoint={surfacePoint}, isVisible={_isVisible}, isInverted={_isInverted}`)
+
+					finalPoints[i] = Vector2.new(
+						math.round(sP2.X),
+						math.round(sP2.Y)
+					)
 				end
-			end
-			assert(iA1 and iB1)
-			local iA2: number?, iB2: number?
 
-			for i, v in pairs(inversion) do
-				if v == false then
-					local nI = if i+1 > #points then 1 else i+1
-					local pI = if i-1 < 1 then #points else i-1
-					if i ~= iB1 and i ~= iA1 then
-						if nI == iA1 then
-							iA2 = i
-						elseif pI == iA1 then
-							iA2 = i
-						elseif nI == iB1 then
-							iB2 = i
-						elseif pI == iB1 then
-							iB2 = i
-						end
-					end
+				-- print(`inversion[pI]={inversion[pI]}`)
+				-- print(`inversion[nI]={inversion[nI]}`)
+				if inversion[pI] == false then
+
+					local pV = perimeter[pI]
+					local direction = v - pV
+					-- print(`pV={pV}`)
+					-- print(`direction={direction}`)
+					addPoint(pV, direction, pI)
+				elseif inversion[nI] == false then
+					local nV = perimeter[nI]
+					local direction = v - nV
+					-- print(`nV={nV}`)
+					-- print(`direction={direction}`)
+					addPoint(nV, direction, nI)
+				else
+					-- print(`edit failed, adding original point`)
+
+					finalPoints[i] = points[i]
 				end
+			else
+				-- print(`no edit needed, adding original point`)
+
+				finalPoints[i] = points[i]
 			end
-			assert(iA2 and iB2)
-
-			print(`iA1={iA1}, iA2={iA2},iB1={iB1},iB2={iB2}`)
-
-			local a1 = points[iA1]
-			local a2 = points[iA2]
-			
-			local b1 = points[iB1]
-			local b2 = points[iB2]
-
-			local aN = (a2-a1).Unit
-			local bN = (b2-b1).Unit
-
-			print(`aN={aN},bN={bN}`)
-
-			local aH = a2 - aN * 50 -- getBorderHit(a2, -aN)
-			local bH = b2 - bN * 50 -- getBorderHit(b2, -bN)
-			assert(aH and bH)
-
-			finalPoints[iA2] = aH
-			finalPoints[iB2] = bH
-			
 		end
-		-- for i, origin in ipairs(points) do
-		-- 	local nI = if #points < i+1 then 1 else i+1
-		-- 	local dest = points[nI]
-			
-		-- 	local normal = (dest - origin).Unit
-			
-		-- 	local oVis = visibility[i]
-		-- 	local nVis = visibility[nI]
-			
-		-- 	local oInv = inversion[i]
-		-- 	local nInv = inversion[nI]
-	
-		-- 	if oInv and nInv then
-		-- 		local hit1 = getBorderHit(
-		-- 			origin,
-		-- 			-normal
-		-- 		)
-		-- 		local hit2 = getBorderHit(
-		-- 			dest,
-		-- 			normal
-		-- 		)
-		-- 		finalPoints[i] = hit1
-		-- 		finalPoints[nI] = hit2
-		-- 	else
-		-- 		finalPoints[i] = origin
-		-- 	end
-		-- end
+		-- print(finalPoints)
 		return finalPoints
-	else
-		return points
 	end
+
+
+	return points
 end
 
 function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
@@ -466,7 +389,7 @@ function Frustum:GetOuterBlockBounds(cf: CFrame, size: Vector3): Rect
 end
 
 function Frustum:GetInnerBlockBounds(cf: CFrame, size: Vector3): Rect
-	return ShapeUtil.getInnerBounds(self:GetProjectedShape(cf, size))
+	return ShapeUtil.getInnerBounds(self:GetProjectedShape(cf, size), self.ViewportSize)
 end
 
 function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean

@@ -319,19 +319,19 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						frame.Parent = screen
 					end
 
-					local reps = math.clamp(math.floor(offset.Magnitude / 25), 1, 50)
-					for i=0, reps do
-						local h,_s,_v = color:ToHSV()
-						local pos = a + i * offset / reps
-						local frame = Instance.new("Frame")
-						frame.BackgroundTransparency = trans * 0.5
-						frame.ZIndex = zIndex + 1
-						frame.BackgroundColor3 = Color3.fromHSV(h,1, 0.25 + 0.75 * (i/reps))
-						frame.BorderSizePixel = 1
-						frame.Position = UDim2.fromOffset(pos.X, pos.Y)
-						frame.Size = UDim2.fromOffset(10, 10)
-						frame.Parent = screen
-					end
+					-- local reps = math.clamp(math.floor(offset.Magnitude / 25), 1, 50)
+					-- for i=0, reps do
+					-- 	local h,_s,_v = color:ToHSV()
+					-- 	local pos = a + i * offset / reps
+					-- 	local frame = Instance.new("Frame")
+					-- 	frame.BackgroundTransparency = trans * 0.5
+					-- 	frame.ZIndex = zIndex + 1
+					-- 	frame.BackgroundColor3 = Color3.fromHSV(h,1, 0.25 + 0.75 * (i/reps))
+					-- 	frame.BorderSizePixel = 1
+					-- 	frame.Position = UDim2.fromOffset(pos.X, pos.Y)
+					-- 	frame.Size = UDim2.fromOffset(10, 10)
+					-- 	frame.Parent = screen
+					-- end
 				end
 
 				do
@@ -431,8 +431,17 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						end
 
 						local start = tick()
-						local innerRect = ShapeUtil.getInnerBounds(shape)
+						local innerRect = ShapeUtil.getInnerBounds(shape, frustum.ViewportSize)
 						local finish = tick()				
+
+						-- for r, v in pairs(ShapeUtil._getInnerBoundRegions(shape, frustum.ViewportSize)) do
+						-- 	_drawRect(
+						-- 		r,
+						-- 		if v == "Inner" then Color3.new(0,1,1) else Color3.new(1,0,0),
+						-- 		0.5,
+						-- 		1
+						-- 	)
+						-- end
 
 						partInnerAreaRegistry[part] = innerRect.Width * innerRect.Height
 						partInnerRectRegistry[part] = innerRect
@@ -526,14 +535,14 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 
 						local finish = tick()
 
-						-- do
-						-- 	_drawRect(
-						-- 		innerRect,
-						-- 		if not isOccluded then Color3.new(0, 1, 1) else Color3.new(1,0,0),
-						-- 		if not isOccluded then 0.4 else 0.1,
-						-- 		self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
-						-- 	)
-						-- end
+						do
+							_drawRect(
+								innerRect,
+								if not isOccluded then Color3.new(0, 1, 1) else Color3.new(1,0,0),
+								if not isOccluded then 0.4 else 0.1,
+								self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
+							)
+						end
 
 						table.insert(searchMeasurements[part.Name], finish - start)
 					end
@@ -583,7 +592,9 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					isPlaying = false
 				end
 			end))
-			update(1/60)
+			task.spawn(function()
+				update(1/60)
+			end)
 		end
 	else
 		self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)

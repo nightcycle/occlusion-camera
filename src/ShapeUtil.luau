@@ -59,209 +59,203 @@ function Util.getLineIntersection(origin: Vector2, direction: Vector2, a: Vector
 	end
 end
 
-function Util._getInnerBoundRegion(perimeter: {[number]: Vector2}): Rect
+-- function Util._getInnerBoundRegions(perimeter: {[number]: Vector2}, vSize: Vector2): {[Rect]: FillType}
+-- 	local center = Vector2.zero
+-- 	for i, v in ipairs(perimeter) do
+-- 		center += Vector2.new(
+-- 			math.clamp(v.X, 0, vSize.X),
+-- 			math.clamp(v.Y, 0, vSize.Y)
+-- 		)
+-- 	end
+
+-- 	center /= #perimeter
+
+-- 	local function renderPoint(point: Vector2, size: number): Rect
+-- 		return Rect.new(
+-- 			point - Vector2.one * size,
+-- 			point + Vector2.one * size
+-- 		)
+-- 	end
+
+-- 	local function getIntersection(origin: Vector2, normal: Vector2): IntersectionData?
+-- 		for i, v in ipairs(perimeter) do
+-- 			local nV = perimeter[i+1] or perimeter[1]
+-- 			local intersection = Util.getLineIntersection(
+-- 				origin,
+-- 				normal * BIG,
+-- 				v,
+-- 				nV
+-- 			)
+-- 			if intersection then
+-- 				return {
+-- 					Intersection = intersection,
+-- 					A = v,
+-- 					B = nV
+-- 				}
+-- 			end
+-- 		end
+-- 		return nil
+-- 	end
+
+-- 	local out: {[Rect]: FillType} = {
+-- 		[renderPoint(center, 10)] = "Line",
+-- 	}
+
+-- 	local minV2: Vector2?
+
+-- 	do
+-- 		local hit = getIntersection(center, Vector2.new(1,0))
+-- 		if hit then
+-- 			minV2 = Vector2.new(
+-- 				math.min(hit.A.X, hit.B.X),
+-- 				math.min(hit.A.Y, hit.B.Y)
+-- 			)
+-- 		end
+-- 	end
+
+-- 	local maxV2: Vector2?
+
+-- 	do
+-- 		local hit = getIntersection(center, Vector2.new(-1,0))
+-- 		if hit then
+-- 			maxV2 = Vector2.new(
+-- 				math.max(hit.A.X, hit.B.X),
+-- 				math.max(hit.A.Y, hit.B.Y)
+-- 			)
+-- 		end
+-- 	end
+
+-- 	if minV2 and maxV2 then
+-- 		local maxX = maxV2.X
+-- 		local maxY = maxV2.Y
+-- 		local minX = minV2.X
+-- 		local minY = minV2.Y
+-- 		do
+-- 			local maxYR: number?
+-- 			do
+-- 				out[renderPoint(
+-- 					Vector2.new(
+-- 						minV2.X,
+-- 						center.Y
+-- 					), 
+-- 					15
+-- 				)] = "Line"
+				
+-- 				local hit = getIntersection(Vector2.new(
+-- 					minV2.X,
+-- 					center.Y
+-- 				), Vector2.new(0, 1))
+
+-- 				if hit then
+-- 					out[renderPoint(
+-- 						hit.Intersection, 
+-- 						15
+-- 					)] = "Empty"
+-- 					maxYR = hit.Intersection.Y
+-- 				end
+-- 			end
+	
+-- 			local maxYL: number?
+-- 			do
+-- 				out[renderPoint(
+-- 					Vector2.new(
+-- 						maxV2.X,
+-- 						center.Y
+-- 					), 
+-- 					15
+-- 				)] = "Line"
+
+-- 				local hit = getIntersection(Vector2.new(
+-- 					maxV2.X,
+-- 					center.Y
+-- 				), Vector2.new(0, 1))
+
+-- 				if hit then
+-- 					out[renderPoint(
+-- 						hit.Intersection, 
+-- 						15
+-- 					)] = "Empty"
+-- 					maxYL = hit.Intersection.Y
+-- 				end
+-- 			end
+
+-- 			if maxYL and maxYR then
+-- 				maxY = math.min(maxYL, maxYR)
+-- 			elseif maxYL then
+-- 				maxY = maxYL
+-- 			elseif maxYR then
+-- 				maxY = maxYR
+-- 			end
+-- 		end
+-- 		do
+-- 			local minYR: number?
+-- 			do
+-- 				out[renderPoint(
+-- 					Vector2.new(
+-- 						minV2.X,
+-- 						center.Y
+-- 					), 
+-- 					15
+-- 				)] = "Line"
+				
+-- 				local hit = getIntersection(Vector2.new(
+-- 					minV2.X,
+-- 					center.Y
+-- 				), Vector2.new(0, -1))
+
+-- 				if hit then
+-- 					out[renderPoint(
+-- 						hit.Intersection, 
+-- 						15
+-- 					)] = "Empty"
+-- 					minYR = hit.Intersection.Y
+-- 				end
+-- 			end
+	
+-- 			local minYL: number?
+-- 			do
+-- 				out[renderPoint(
+-- 					Vector2.new(
+-- 						maxV2.X,
+-- 						center.Y
+-- 					), 
+-- 					15
+-- 				)] = "Line"
+
+-- 				local hit = getIntersection(Vector2.new(
+-- 					maxV2.X,
+-- 					center.Y
+-- 				), Vector2.new(0, -1))
+
+-- 				if hit then
+-- 					out[renderPoint(
+-- 						hit.Intersection, 
+-- 						15
+-- 					)] = "Empty"
+-- 					minYL = hit.Intersection.Y
+-- 				end
+-- 			end
+
+-- 			if minYL and minYR then
+-- 				minY = math.max(minYL, minYR)
+-- 			elseif minYL then
+-- 				minY = minYL
+-- 			elseif minYR then
+-- 				minY = minYR
+-- 			end
+-- 		end
+-- 	end
+-- 	return out
+-- end
+
+
+function Util.getInnerBounds(perimeter: {[number]: Vector2}, vSize: Vector2): Rect
 	local center = Vector2.zero
 	for i, v in ipairs(perimeter) do
-		center += v
-	end
-
-	center /= #perimeter
-
-	local function renderPoint(point: Vector2, size: number): Rect
-		return Rect.new(
-			point - Vector2.one * size,
-			point + Vector2.one * size
+		center += Vector2.new(
+			math.clamp(v.X, 0, vSize.X),
+			math.clamp(v.Y, 0, vSize.Y)
 		)
-	end
-
-	local function getIntersection(origin: Vector2, normal: Vector2): IntersectionData?
-		for i, v in ipairs(perimeter) do
-			local nV = perimeter[i+1] or perimeter[1]
-			local intersection = Util.getLineIntersection(
-				origin,
-				normal * BIG,
-				v,
-				nV
-			)
-			if intersection then
-				return {
-					Intersection = intersection,
-					A = v,
-					B = nV
-				}
-			end
-		end
-		return nil
-	end
-
-	local out: {[Rect]: FillType} = {
-		[renderPoint(center, 10)] = "Line",
-	}
-
-	local minV2: Vector2?
-
-	do
-		local hit = getIntersection(center, Vector2.new(1,0))
-		if hit then
-			minV2 = Vector2.new(
-				math.min(hit.A.X, hit.B.X),
-				math.min(hit.A.Y, hit.B.Y)
-			)
-		end
-	end
-
-	local maxV2: Vector2?
-
-	do
-		local hit = getIntersection(center, Vector2.new(-1,0))
-		if hit then
-			maxV2 = Vector2.new(
-				math.max(hit.A.X, hit.B.X),
-				math.max(hit.A.Y, hit.B.Y)
-			)
-		end
-	end
-
-	if minV2 and maxV2 then
-		local maxX = maxV2.X
-		local maxY = maxV2.Y
-		local minX = minV2.X
-		local minY = minV2.Y
-		do
-			local maxYR: number?
-			do
-				out[renderPoint(
-					Vector2.new(
-						minV2.X,
-						center.Y
-					), 
-					15
-				)] = "Line"
-				
-				local hit = getIntersection(Vector2.new(
-					minV2.X,
-					center.Y
-				), Vector2.new(0, 1))
-
-				if hit then
-					out[renderPoint(
-						hit.Intersection, 
-						15
-					)] = "Empty"
-					maxYR = hit.Intersection.Y
-				end
-			end
-	
-			local maxYL: number?
-			do
-				out[renderPoint(
-					Vector2.new(
-						maxV2.X,
-						center.Y
-					), 
-					15
-				)] = "Line"
-
-				local hit = getIntersection(Vector2.new(
-					maxV2.X,
-					center.Y
-				), Vector2.new(0, 1))
-
-				if hit then
-					out[renderPoint(
-						hit.Intersection, 
-						15
-					)] = "Empty"
-					maxYL = hit.Intersection.Y
-				end
-			end
-
-			if maxYL and maxYR then
-				maxY = math.min(maxYL, maxYR)
-			elseif maxYL then
-				maxY = maxYL
-			elseif maxYR then
-				maxY = maxYR
-			end
-		end
-		do
-			local minYR: number?
-			do
-				out[renderPoint(
-					Vector2.new(
-						minV2.X,
-						center.Y
-					), 
-					15
-				)] = "Line"
-				
-				local hit = getIntersection(Vector2.new(
-					minV2.X,
-					center.Y
-				), Vector2.new(0, -1))
-
-				if hit then
-					out[renderPoint(
-						hit.Intersection, 
-						15
-					)] = "Empty"
-					minYR = hit.Intersection.Y
-				end
-			end
-	
-			local minYL: number?
-			do
-				out[renderPoint(
-					Vector2.new(
-						maxV2.X,
-						center.Y
-					), 
-					15
-				)] = "Line"
-
-				local hit = getIntersection(Vector2.new(
-					maxV2.X,
-					center.Y
-				), Vector2.new(0, -1))
-
-				if hit then
-					out[renderPoint(
-						hit.Intersection, 
-						15
-					)] = "Empty"
-					minYL = hit.Intersection.Y
-				end
-			end
-
-			if minYL and minYR then
-				minY = math.max(minYL, minYR)
-			elseif minYL then
-				minY = minYL
-			elseif minYR then
-				minY = minYR
-			end
-		end
-
-		return Rect.new(
-			Vector2.new(
-				math.round(minX), 
-				math.round(minY)
-			), 
-			Vector2.new(
-				math.round(maxX), 
-				math.round(maxY)
-			)
-		)
-	else
-		return Rect.new(Vector2.zero, Vector2.zero)
-	end
-end
-
-
-function Util.getInnerBounds(perimeter: {[number]: Vector2}): Rect
-	local center = Vector2.zero
-	for i, v in ipairs(perimeter) do
-		center += v
 	end
 
 	center /= #perimeter

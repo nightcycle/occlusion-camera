@@ -386,7 +386,7 @@ function Util.toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Ve
 	local out = Vector3.new(screenPosition.X, screenPosition.Y, math.sign(offset.Z))
 	-- if debugEnabled then print(`sPF: {out}`) end
 
-	local isInverted = offset.Y > 0
+	local isInverted = offset.Z > 0
 
 	return out, isVisible, isInverted
 end
@@ -403,27 +403,10 @@ function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraCF: CFrame): {[
 
 	local perimeter: {[number]: Vector3} = {}
 
-	print(`\ncenter: {centerId}`)
 	for j, cornerId in ipairs(perimeterData) do
 		local point = getWorldPosition(cf, size, cornerId :: CornerId)
 		table.insert(perimeter, point)
-		
-
-		-- if cornerId == "xYZ" then
-			-- debugEnabled = true
-			-- local screenPoint, isVis = Util.toViewportPoint(
-			-- 	point,
-			-- 	workspace.CurrentCamera.CFrame,
-			-- 	workspace.CurrentCamera.FieldOfView,
-			-- 	workspace.CurrentCamera.ViewportSize,
-			-- 	workspace.CurrentCamera.NearPlaneZ
-			-- )
-			-- debugEnabled = false
-			-- print(`{cornerId} -> {Vector3.new(math.round(screenPoint.X), math.round(screenPoint.Y), math.round(screenPoint.Z))} || {isVis}`)
-		-- end
 	end
-
-	print(`{centerId} = {table.concat(perimeterData, ",")}\n`)
 
 	assert(#perimeter ~= 0)
 
