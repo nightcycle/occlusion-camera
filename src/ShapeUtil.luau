@@ -8,7 +8,13 @@ local TableUtil = require(_Packages:WaitForChild("TableUtil"))
 -- Modules
 -- Types
 export type FillType = "Line" | "Inner" | "Empty"
+type IntersectionData = {
+	Intersection: Vector2,
+	A: Vector2,
+	B: Vector2
+}
 -- Constants
+local BIG = 100000
 -- Variables
 -- References
 -- Private Functions
@@ -21,201 +27,235 @@ local function getIfOverlaps(a: Rect, b: Rect): boolean
            (a.Min.Y < b.Min.Y + b.Height) and
            (a.Min.Y + a.Height > b.Min.Y)
 end
+
+function getLineIntersection(origin: Vector2, direction: Vector2, a: Vector2, b: Vector2): Vector2?
+	local x1: number, y1: number = origin.X, origin.Y
+	local x2: number, y2: number = x1 + direction.X, y1 + direction.Y
+	local x3: number, y3: number = a.X, a.Y
+	local x4: number, y4: number = b.X, b.Y
+
+	-- Calculate determinants
+	local det = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+
+	-- Lines are parallel if determinant is 0
+	if det == 0 then
+		return nil
+	end
+
+	-- Calculate intersection point
+	local px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / det
+	local py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / det
+ 
+	if px >= math.min(x1, x2) and px <= math.max(x1, x2) and
+	   py >= math.min(y1, y2) and py <= math.max(y1, y2) and
+	   px >= math.min(x3, x4) and px <= math.max(x3, x4) and
+	   py >= math.min(y3, y4) and py <= math.max(y3, y4) then
+	    return Vector2.new(px, py)
+	else
+	    return nil
+	end
+end
+ 
+
 -- Class
 local Util = {}
 
-function Util.getInnerBoundSubdivisions(perimeter: {[number]: Vector2}): {[Rect]: FillType}
+function Util.getInnerBounds(perimeter: {[number]: Vector2}): Rect
+	local center = Vector2.zero
+	for i, v in ipairs(perimeter) do
+		center += v
+	end
 
+	center /= #perimeter
+
+	local function renderPoint(point: Vector2, size: number): Rect
+		return Rect.new(
+			point - Vector2.one * size,
+			point + Vector2.one * size
+		)
+	end
+
+	local function getIntersection(origin: Vector2, normal: Vector2): IntersectionData?
+		for i, v in ipairs(perimeter) do
+			local nV = perimeter[i+1] or perimeter[1]
+			local intersection = getLineIntersection(
+				origin,
+				normal * BIG,
+				v,
+				nV
+			)
+			if intersection then
+				return {
+					Intersection = intersection,
+					A = v,
+					B = nV
+				}
+			end
+		end
+		return nil
+	end
+
+	local out: {[Rect]: FillType} = {
+		[renderPoint(center, 10)] = "Line",
+	}
+
+	local minV2: Vector2?
 
 	do
-		local xRegistry: {[number]: true} = {}
-		local yRegistry: {[number]: true} = {}
-	
-		local edgeRectRegistry: {[Rect]: FillType} = {}
-
-		local minX = math.huge
-		local maxX = -math.huge
-		local minY = math.huge
-		local maxY = -math.huge
-
-
-		local function getIfLineRect(rect: Rect): boolean
-			for edgeRect, _ in pairs(edgeRectRegistry) do
-				if getIfOverlaps(edgeRect, rect) then
-					return true
-				end
-			end
-			return false
-		end
-	
-		local prevLineRegistry: {[string]: Vector2} = {}
-		local nextLineRegistry: {[string]: Vector2} = {}
-		local pointRegistry: {[string]: Vector2} = {}
-	
-		local maxXLine: NumberRange?
-		local minXLine: NumberRange?
-		local maxYLine: NumberRange?
-		local minYLine: NumberRange?
-
-		for i, v in ipairs(perimeter) do
-			local nextPoint = perimeter[i+1] or perimeter[1]
-
-			edgeRectRegistry[Rect.new(v, nextPoint)] = true
-		
-			minX = math.min(minX, v.X)
-			maxX = math.max(maxX, v.X)
-
-			minY = math.min(minY, v.Y)
-			maxY = math.max(maxY, v.Y)
-
-			perimeter[i] = Vector2.new(
-				math.round(v.X),
-				math.round(v.Y)
+		local hit = getIntersection(center, Vector2.new(1,0))
+		if hit then
+			minV2 = Vector2.new(
+				math.min(hit.A.X, hit.B.X),
+				math.min(hit.A.Y, hit.B.Y)
 			)
 		end
-
-		
-		-- for i, v in ipairs(perimeter) do
-		-- 	local nextPoint = perimeter[i+1] or perimeter[1]
-		-- 	if v.X == nextPoint.X then
-		-- 		if v.X == maxX then
-		-- 			if v.Y > nextPoint.Y then
-		-- 				maxXLine = NumberRange.new(nextPoint.Y, v.Y)
-		-- 			else
-		-- 				maxXLine = NumberRange.new(v.Y, nextPoint.Y)
-		-- 			end
-		-- 		else
-		-- 			if v.Y > nextPoint.Y then
-		-- 				minXLine = NumberRange.new(nextPoint.Y, v.Y)
-		-- 			else
-		-- 				minXLine = NumberRange.new(v.Y, nextPoint.Y)
-		-- 			end
-		-- 		end
-		-- 	elseif v.Y == nextPoint.Y then
-		-- 		if v.Y == maxY then
-		-- 			if v.X > nextPoint.X then
-		-- 				maxYLine = NumberRange.new(nextPoint.X, v.X)
-		-- 			else
-		-- 				maxYLine = NumberRange.new(v.X, nextPoint.X)
-		-- 			end
-		-- 		else
-		-- 			if v.X > nextPoint.X then
-		-- 				minYLine = NumberRange.new(nextPoint.X, v.X)
-		-- 			else
-		-- 				minYLine = NumberRange.new(v.X, nextPoint.X)
-		-- 			end
-		-- 		end
-		-- 	end
-		-- end
-		-- if not (#perimeter >= 2) then return {} end
-		-- assert(#perimeter >= 2)
-		-- for i, v in ipairs(perimeter) do
-		-- 	local pV = perimeter[i-1] or perimeter[#perimeter]
-		-- 	local nV = perimeter[i+1] or perimeter[1]
-	
-		-- 	prevLineRegistry[tostring(v)] = pV
-		-- 	nextLineRegistry[tostring(v)] = nV
-		-- 	pointRegistry[tostring(v)] = v
-	
-		-- 	xRegistry[v.X] = true
-		-- 	yRegistry[v.Y] = true
-		-- end
-	
-		-- local xList = TableUtil.keys(xRegistry)
-		-- local yList = TableUtil.keys(yRegistry)
-		-- table.sort(xList)
-		-- table.sort(yList)
-	
-		-- local cellRegistry: {[Rect]: FillType} = {}
-		-- for i, x in ipairs(xList) do
-		-- 	for j, y in ipairs(yList) do
-		-- 		local nX = xList[i+1]
-		-- 		local nY = yList[j+1]
-	
-		-- 		if nX and nY then
-	
-		-- 			local rect = Rect.new(
-		-- 				Vector2.new(x,y),
-		-- 				Vector2.new(nX,nY)
-		-- 			)
-
-
-		-- 			local fillType: FillType = "Inner"
-		-- 			if getIfLineRect(rect) then
-		-- 				fillType = "Line"
-		-- 			else
-		-- 				local xBorderCount = 0
-		-- 				if minX == rect.Min.X then
-		-- 					if not minXLine then
-		-- 						xBorderCount += 1 
-		-- 					end
-		-- 				end
-		-- 				if maxX == rect.Min.X then 
-		-- 					if not maxXLine then
-		-- 						xBorderCount += 1 
-		-- 					end
-		-- 				end
-		-- 				if minX == rect.Max.X then 
-		-- 					if not minXLine then
-		-- 						xBorderCount += 1 
-		-- 					end
-		-- 				end
-		-- 				if maxX == rect.Max.X then 
-		-- 					if not maxXLine then
-		-- 						xBorderCount += 1 
-		-- 					end
-		-- 				end
-	
-		-- 				local yBorderCount = 0
-
-		-- 				if minY == rect.Min.Y then 
-		-- 					if not minYLine then
-		-- 						yBorderCount += 1 
-		-- 					end	
-		-- 				end
-		-- 				if maxY == rect.Min.Y then 
-		-- 					if not maxYLine then
-		-- 						yBorderCount += 1 
-		-- 					end
-		-- 				end
-		-- 				if minY == rect.Max.Y then 
-		-- 					if not minYLine then
-		-- 						yBorderCount += 1 
-		-- 					end
-		-- 				end
-		-- 				if maxY == rect.Max.Y then 
-		-- 					if not maxYLine then
-		-- 						yBorderCount += 1 
-		-- 					end
-		-- 				end
-
-		-- 				if xBorderCount >= 1 or yBorderCount >= 1 then
-		-- 					fillType = "Empty"
-		-- 				end
-		-- 			end
-		-- 			cellRegistry[rect] = fillType
-		-- 		end
-		-- 	end
-		-- end
-		return edgeRectRegistry
-		-- return cellRegistry
 	end
-	-- local edgeRectRegistry: {[Rect]: FillType} = {}
-	-- for i, point in ipairs(perimeter) do
-	-- 	local nextPoint = perimeter[i+1] or perimeter[1]
-	-- 	local rect = Rect.new(
-	-- 		point,
-	-- 		nextPoint
-	-- 	)
-	-- 	edgeRectRegistry[rect] = "Line"
-	-- end
-	-- return edgeRectRegistry
-end
 
+	local maxV2: Vector2?
 
-function Util.getInnerBounds(perimeter: {[number]: Vector2}): Rect
-	Util.getInnerBoundSubdivisions(perimeter)
-	return Rect.new(Vector2.zero, Vector2.one)
+	do
+		local hit = getIntersection(center, Vector2.new(-1,0))
+		if hit then
+			maxV2 = Vector2.new(
+				math.max(hit.A.X, hit.B.X),
+				math.max(hit.A.Y, hit.B.Y)
+			)
+		end
+	end
+
+	if minV2 and maxV2 then
+		local maxX = maxV2.X
+		local maxY = maxV2.Y
+		local minX = minV2.X
+		local minY = minV2.Y
+		do
+			local maxYR: number?
+			do
+				out[renderPoint(
+					Vector2.new(
+						minV2.X,
+						center.Y
+					), 
+					15
+				)] = "Line"
+				
+				local hit = getIntersection(Vector2.new(
+					minV2.X,
+					center.Y
+				), Vector2.new(0, 1))
+
+				if hit then
+					out[renderPoint(
+						hit.Intersection, 
+						15
+					)] = "Empty"
+					maxYR = hit.Intersection.Y
+				end
+			end
+	
+			local maxYL: number?
+			do
+				out[renderPoint(
+					Vector2.new(
+						maxV2.X,
+						center.Y
+					), 
+					15
+				)] = "Line"
+
+				local hit = getIntersection(Vector2.new(
+					maxV2.X,
+					center.Y
+				), Vector2.new(0, 1))
+
+				if hit then
+					out[renderPoint(
+						hit.Intersection, 
+						15
+					)] = "Empty"
+					maxYL = hit.Intersection.Y
+				end
+			end
+
+			if maxYL and maxYR then
+				maxY = math.min(maxYL, maxYR)
+			elseif maxYL then
+				maxY = maxYL
+			elseif maxYR then
+				maxY = maxYR
+			end
+		end
+		do
+			local minYR: number?
+			do
+				out[renderPoint(
+					Vector2.new(
+						minV2.X,
+						center.Y
+					), 
+					15
+				)] = "Line"
+				
+				local hit = getIntersection(Vector2.new(
+					minV2.X,
+					center.Y
+				), Vector2.new(0, -1))
+
+				if hit then
+					out[renderPoint(
+						hit.Intersection, 
+						15
+					)] = "Empty"
+					minYR = hit.Intersection.Y
+				end
+			end
+	
+			local minYL: number?
+			do
+				out[renderPoint(
+					Vector2.new(
+						maxV2.X,
+						center.Y
+					), 
+					15
+				)] = "Line"
+
+				local hit = getIntersection(Vector2.new(
+					maxV2.X,
+					center.Y
+				), Vector2.new(0, -1))
+
+				if hit then
+					out[renderPoint(
+						hit.Intersection, 
+						15
+					)] = "Empty"
+					minYL = hit.Intersection.Y
+				end
+			end
+
+			if minYL and minYR then
+				minY = math.max(minYL, minYR)
+			elseif minYL then
+				minY = minYL
+			elseif minYR then
+				minY = minYR
+			end
+		end
+
+		return Rect.new(
+			Vector2.new(
+				math.round(minX), 
+				math.round(minY)
+			), 
+			Vector2.new(
+				math.round(maxX), 
+				math.round(maxY)
+			)
+		)
+	else
+		return Rect.new(Vector2.zero, Vector2.zero)
+	end
 end
 
 function Util.getOuterBounds(perimeter: {[number]: Vector2}): Rect

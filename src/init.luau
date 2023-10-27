@@ -379,20 +379,6 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 						local innerRect = ShapeUtil.getInnerBounds(shape)
 						local finish = tick()				
 
-						do
-							for rect, fillType in pairs(ShapeUtil.getInnerBoundSubdivisions(shape)) do
-								local frame = Instance.new("Frame")
-								frame.BackgroundTransparency = 0.5
-								frame.ZIndex = 1
-								frame.BorderSizePixel = 1
-								frame.BackgroundColor3 = if fillType == "Inner" then Color3.new(0,1,0) elseif fillType == "Line" then Color3.new(1,1,0) else  Color3.new(1,0,0)
-								frame.Position = UDim2.fromOffset(rect.Min.X+frame.BorderSizePixel, rect.Min.Y+frame.BorderSizePixel)
-								frame.Size = UDim2.fromOffset(rect.Width-frame.BorderSizePixel*2, rect.Height-frame.BorderSizePixel*2)
-								frame.Parent = screen
-							end
-						end
-
-
 						partInnerAreaRegistry[part] = innerRect.Width * innerRect.Height
 						partInnerRectRegistry[part] = innerRect
 
