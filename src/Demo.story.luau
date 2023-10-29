@@ -17,8 +17,7 @@ local VISIBLE_TAG = Config.Tag.Visible
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
 local FIELD_OF_VIEW = 55
 local MAX_RENDER_DISTANCE = 2048
-local USE_REAL_CAMERA = true
-local PERFORMANCE_TEST = false
+local USE_REAL_CAMERA = false
 
 -- Variables
 -- References
@@ -27,8 +26,6 @@ local Map = workspace:WaitForChild("MediumMap")
 return function(frame: Frame)
 	local maid = Maid.new()
 			
-	Config.Debug.NoDebugRender = true -- PERFORMANCE_TEST
-
 	local isDead = false
 	task.spawn(function()
 		task.wait(1)
@@ -57,7 +54,7 @@ return function(frame: Frame)
 			camera = workspace.CurrentCamera
 		else
 			camera = maid:GiveTask(Instance.new("Camera"))
-			camera:SetAttribute("NearPlaneZ", -5)
+			camera:SetAttribute("NearPlaneZ", workspace.CurrentCamera.NearPlaneZ)
 			camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
 			camera.FieldOfView = FIELD_OF_VIEW
 			camera.Parent = part

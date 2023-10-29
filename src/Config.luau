@@ -10,10 +10,12 @@
 -- Class
 return {
 	Debug = {
-		NoDebugRender = true,
 		Culling = false,
-		Occlusion = false,
-		UseExactCulling = false, --slower
+		Shape = true,
+		InnerBounds = false,
+		OuterBounds = false,
+		RegisterMask = false,
+		SearchMask = false,
 	},
 	Tag = {
 		InFrustum = "OcclusionCameraInFrustum",

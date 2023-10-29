@@ -3,7 +3,6 @@ local _Package = script.Parent
 local _Packages = _Package.Parent
 -- Services
 local RunService = game:GetService("RunService")
-local CollectionService = game:GetService("CollectionService")
 -- Packages
 local Maid = require(_Packages:WaitForChild("Maid"))
 -- Modules
@@ -11,19 +10,17 @@ local Config = require(_Package:WaitForChild("Config"))
 -- Types
 -- Constants
 local MAX_RENDER_DISTANCE = 2048
-local PERFORMANCE_TEST = false
-local USE_REAL_CAMERA = true
+local USE_REAL_CAMERA = false
 local FIELD_OF_VIEW = if USE_REAL_CAMERA then workspace.CurrentCamera.FieldOfView else 55
 
 -- Variables
 -- References
+local Map = workspace:WaitForChild("MediumMap")
+
 -- Class
 return function(frame: Frame)
 	local maid = Maid.new()
-			
-	Config.Debug.NoDebugRender = PERFORMANCE_TEST
-	Config.Debug.Occlusion = true
-	
+				
 	task.spawn(function()
 		local OcclusionCamera = require(_Package)
 
@@ -50,7 +47,7 @@ return function(frame: Frame)
 			end
 		else
 			camera = maid:GiveTask(Instance.new("Camera"))
-			camera:SetAttribute("NearPlaneZ", -50)
+			camera:SetAttribute("NearPlaneZ", -25)
 			camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
 			camera.FieldOfView = FIELD_OF_VIEW
 			camera.Parent = part
@@ -65,6 +62,8 @@ return function(frame: Frame)
 		end		
 
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
+
+		oCam.Parts = Map:GetChildren() :: any
 		oCam.MaxRenderDistance = MAX_RENDER_DISTANCE
 
 		maid:GiveTask(RunService.RenderStepped:Connect(function()

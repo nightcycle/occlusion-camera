@@ -20,19 +20,22 @@ local RTree = require(_Package:WaitForChild("RTree"))
 local Config = require(_Package:WaitForChild("Config"))
 local Frustum = require(_Package:WaitForChild("Frustum"))
 local Mask = require(_Package:WaitForChild("Mask"))
+local DebugUtil = require(_Package:WaitForChild("DebugUtil"))
 
 -- Types
 -- Constants
-local NO_DEBUG_RENDER = Config.Debug.NoDebugRender
-local DEBUG_OCCLUSION = Config.Debug.Occlusion
 local DEBUG_CULLING = Config.Debug.Culling
+local DEBUG_SHAPE = Config.Debug.Shape
+local DEBUG_INNER_BOUNDS = Config.Debug.InnerBounds
+local DEBUG_OUTER_BOUNDS = Config.Debug.OuterBounds
+local DEBUG_REGISTER_MASK = Config.Debug.RegisterMask
+local DEBUG_SEARCH_MASK = Config.Debug.SearchMask
+local IS_DEBUG = DEBUG_CULLING or DEBUG_SHAPE or DEBUG_INNER_BOUNDS or DEBUG_OUTER_BOUNDS or DEBUG_SEARCH_MASK or DEBUG_REGISTER_MASK
+
 local IN_FRUSTUM_TAG = Config.Tag.InFrustum
--- local OBSCURED_TAG = Config.Tag.Obscured
--- local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
 local VISIBLE_TAG = Config.Tag.Visible
 local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
--- local PROCESS_LIMIT = 10
-local RENDER_DURATION = 0.5/60
+
 -- Variables
 -- References
 -- Private Functions
@@ -212,397 +215,87 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 	end
 	self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(onRemoveFrustumTag))
 
-	if DEBUG_CULLING or DEBUG_OCCLUSION then
-					
-		local function toMilliseconds(v: number): number
-			return math.round(1000*10000*v)/10000
-		end
+	if IS_DEBUG then
+		
+		local debugMaid = self._Maid:GiveTask(Maid.new())
 
-		if DEBUG_CULLING then
-			local debugInstances: {[number]: Instance} = workspace:WaitForChild("Map"):GetChildren()
-			self._Maid:GiveTask(function()
-				for i, inst in ipairs(debugInstances) do
-					if inst:IsA("BasePart") then
-						inst.Color = Color3.fromHSV(1,0,0.75)
-					end
-				end
-			end)
-			self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
-				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
+		local function onDebugUpdate()
+			debugMaid:DoCleaning()
+			local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
 
-				if not NO_DEBUG_RENDER then
-					self._Maid._frustumDraw = frustum:Draw()
-				end
-
-				local measurements: {[string]: {[number]: number}} = {}
-				for i, inst in ipairs(debugInstances) do
-					if inst:IsA("BasePart") then
-						measurements[inst.Name] = measurements[inst.Name] or {}
-						local start = tick()
-						local isInFrustum: boolean = frustum:GetIfOverlapFrustum(inst)
-						local finish = tick()
-						table.insert(measurements[inst.Name], finish - start)
-						if not NO_DEBUG_RENDER then
-							inst.Color = if not isInFrustum then Color3.new(0,0.5,1) else Color3.fromHSV(0,0.75,1)
-						end
-					end
-				end
-				
-				local netSum = 0
-				local netCount = 0
-				for k, vList in pairs(measurements) do
-					local sum = 0
-					local count = #vList
-					for i, v in ipairs(vList) do
-						sum += v
-					end
-					netSum += sum
-					netCount += count
-					local duration = sum/count
-					self.Instance:SetAttribute(`_{k}_ms`, toMilliseconds(duration))
-					self.Instance:SetAttribute(`_{k}_limit`, math.floor(RENDER_DURATION/duration))
-
-				end
-
-				local netDuration = netSum/netCount
-				self.Instance:SetAttribute(`net_ms`, toMilliseconds(netDuration))
-				self.Instance:SetAttribute(`net_limit`, math.floor(RENDER_DURATION/netDuration))
-
-			end))
-		else
-
-			local parts: {[number]: BasePart} = workspace:WaitForChild("MediumMap"):GetChildren() :: any
-			for i, part in ipairs(parts) do
-				assert(part:IsA("BasePart"), `inst {part:GetFullName()} isn't a basePart`)
-			end
-			self._Maid:GiveTask(function()
-				for i, inst in ipairs(parts) do
-					if inst:IsA("BasePart") then
-						inst.Color = Color3.fromHSV(1,0,0.75)
-					end
-				end
-			end)
-			local function update(deltaTime: number)
-				local screen = self._Maid:GiveTask(Instance.new("ScreenGui"))
+			local screen: LayerCollector
+			if self.Instance == workspace.CurrentCamera then
+				screen = debugMaid:GiveTask(Instance.new("ScreenGui"))
 				screen.Parent = game:GetService("CoreGui")
-
-				local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
-		
-				local partOuterRectRegistry: {[BasePart]: Rect} = {}
-				local partInnerRectRegistry: {[BasePart]: Rect} = {}
-				local partShapeRegistry: {[BasePart]: {[number]: Vector2}} = {}
-				local partOuterAreaRegistry: {[BasePart]: number} = {}
-				local partInnerAreaRegistry: {[BasePart]: number} = {}
-				local partDistanceRegistry: {[BasePart]: number} = {}
-				local visiblePartList: {[number]: BasePart} = {}
-
-				local mask = Mask.new() :: Mask<BasePart>
-
-				local function _drawRect(rect: Rect, color: Color3, trans: number, zIndex: number)
-					local frame = Instance.new("Frame")
-					frame.BackgroundTransparency = trans
-					frame.ZIndex = zIndex
-					frame.BackgroundColor3 =  color
-					frame.BorderSizePixel = 1
-					frame.Position = UDim2.fromOffset(rect.Min.X+frame.BorderSizePixel, rect.Min.Y+frame.BorderSizePixel)
-					frame.Size = UDim2.fromOffset(rect.Width-frame.BorderSizePixel*2, rect.Height-frame.BorderSizePixel*2)
-					frame.Parent = screen
-				end
-
-				local function _drawLine(a: Vector2, b: Vector2, color: Color3, trans: number, zIndex: number)
-					local mid = a:Lerp(b, 0.5)
-					local offset = b - a
-					do
-						local frame = Instance.new("Frame")
-						frame.BackgroundTransparency = trans
-						frame.ZIndex = zIndex
-						frame.BackgroundColor3 = color
-						frame.Position = UDim2.fromOffset(mid.X, mid.Y)
-						frame.AnchorPoint = Vector2.new(0.5, 0.5)
-						frame.Rotation = math.deg(math.atan2(offset.Y, offset.X)) + 90
-						frame.Size = UDim2.fromOffset(5, offset.Magnitude)
-						frame.Parent = screen
-					end
-
-					-- local reps = math.clamp(math.floor(offset.Magnitude / 25), 1, 50)
-					-- for i=0, reps do
-					-- 	local h,_s,_v = color:ToHSV()
-					-- 	local pos = a + i * offset / reps
-					-- 	local frame = Instance.new("Frame")
-					-- 	frame.BackgroundTransparency = trans * 0.5
-					-- 	frame.ZIndex = zIndex + 1
-					-- 	frame.BackgroundColor3 = Color3.fromHSV(h,1, 0.25 + 0.75 * (i/reps))
-					-- 	frame.BorderSizePixel = 1
-					-- 	frame.Position = UDim2.fromOffset(pos.X, pos.Y)
-					-- 	frame.Size = UDim2.fromOffset(10, 10)
-					-- 	frame.Parent = screen
-					-- end
-				end
-
-				do
-					local shapeMeasurements: {[string]: {[number]: number}} = {}
-
-					for i, part in ipairs(parts) do
-						if frustum:GetIfOverlapFrustum(part) then
-							shapeMeasurements[part.Name] = shapeMeasurements[part.Name] or {}
-	
-							local start = tick()
-							local shape = frustum:GetProjectedShape(part.CFrame, part.Size)
-							local finish = tick()				
-							partShapeRegistry[part] = shape
-							partDistanceRegistry[part] = (part.CFrame.Position - self.Instance.CFrame.Position).Magnitude
-							table.insert(shapeMeasurements[part.Name], finish - start)
-						end
-					end
-		
-					do
-						local netSum = 0
-						local netCount = 0
-						for k, vList in pairs(shapeMeasurements) do
-							local sum = 0
-							local count = #vList
-							for i, v in ipairs(vList) do
-								sum += v
-							end
-							netSum += sum
-							netCount += count
-							local duration = sum/count
-							self.Instance:SetAttribute(`_shape_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_shape_{k}_limit`, math.floor(RENDER_DURATION/duration))
-						end
-	
-						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`shape_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`shape_net_limit`, math.floor(RENDER_DURATION/netDuration))
-					end
-				end
-
-
-				do
-					local outerRectMeasurements: {[string]: {[number]: number}} = {}
-
-					for part, shape in pairs(partShapeRegistry) do
-						outerRectMeasurements[part.Name] = outerRectMeasurements[part.Name] or {}
-
-						local start = tick()
-						local outerRect = ShapeUtil.getOuterBounds(shape)
-						local finish = tick()				
-
-						partOuterAreaRegistry[part] = outerRect.Width * outerRect.Height
-						partOuterRectRegistry[part] = outerRect
-
-						table.insert(outerRectMeasurements[part.Name], finish - start)
-					end
-		
-					do
-						local netSum = 0
-						local netCount = 0
-						for k, vList in pairs(outerRectMeasurements) do
-							local sum = 0
-							local count = #vList
-							for i, v in ipairs(vList) do
-								sum += v
-							end
-							netSum += sum
-							netCount += count
-							local duration = sum/count
-							self.Instance:SetAttribute(`_out_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_out_{k}_limit`, math.floor(RENDER_DURATION/duration))
-						end
-	
-						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`out_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`out_net_limit`, math.floor(RENDER_DURATION/netDuration))
-					end
-				end
-
-				do
-					local innerMeasurements: {[string]: {[number]: number}} = {}
-
-					for part, shape in pairs(partShapeRegistry) do
-						innerMeasurements[part.Name] = innerMeasurements[part.Name] or {}
-
-						-- do
-						-- 	for i, v in ipairs(shape) do
-						-- 		local nV = shape[i+1] or shape[1]
-						-- 		_drawLine(
-						-- 			v, 
-						-- 			nV,
-						-- 			Color3.fromHSV((i-1)/#shape,1,1),
-						-- 			0,
-						-- 			20 + self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
-						-- 		)
-						-- 	end
-						-- end
-
-						local start = tick()
-						local innerRect = ShapeUtil.getInnerBounds(shape, frustum.ViewportSize)
-						local finish = tick()				
-
-						-- for r, v in pairs(ShapeUtil._getInnerBoundRegions(shape, frustum.ViewportSize)) do
-						-- 	_drawRect(
-						-- 		r,
-						-- 		if v == "Inner" then Color3.new(0,1,1) else Color3.new(1,0,0),
-						-- 		0.5,
-						-- 		1
-						-- 	)
-						-- end
-
-						partInnerAreaRegistry[part] = innerRect.Width * innerRect.Height
-						partInnerRectRegistry[part] = innerRect
-
-						table.insert(visiblePartList, part)
-
-						table.insert(innerMeasurements[part.Name], finish - start)
-					end
-		
-					do
-						local netSum = 0
-						local netCount = 0
-						for k, vList in pairs(innerMeasurements) do
-							local sum = 0
-							local count = #vList
-							for i, v in ipairs(vList) do
-								sum += v
-							end
-							netSum += sum
-							netCount += count
-							local duration = sum/count
-							self.Instance:SetAttribute(`_in_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_in_{k}_limit`, math.floor(RENDER_DURATION/duration))
-						end
-	
-						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`in_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`in_net_limit`, math.floor(RENDER_DURATION/netDuration))
-					end
-				end
-
-				table.sort(visiblePartList, function(a: BasePart, b: BasePart): boolean
-					return partOuterAreaRegistry[a] > partOuterAreaRegistry[b]
-				end)
-
-				do
-					local maskMeasurements: {[string]: {[number]: number}} = {}
-
-					for part, outerRect in pairs(partOuterRectRegistry) do
-						local innerRect = partInnerRectRegistry[part]
-						maskMeasurements[part.Name] = maskMeasurements[part.Name] or {}
-
-						local start = tick()
-
-						mask:Register(
-							part,
-							innerRect,
-							outerRect,
-							partShapeRegistry[part],
-							self.MaxRenderDistance - partDistanceRegistry[part],
-							true
-						)
-						local finish = tick()
-
-						table.insert(maskMeasurements[part.Name], finish - start)
-					end
-		
-					do
-						local netSum = 0
-						local netCount = 0
-						for k, vList in pairs(maskMeasurements) do
-							local sum = 0
-							local count = #vList
-							for i, v in ipairs(vList) do
-								sum += v
-							end
-							netSum += sum
-							netCount += count
-							local duration = sum/count
-							self.Instance:SetAttribute(`_mask_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_mask_{k}_limit`, math.floor(RENDER_DURATION/duration))
-						end
-	
-						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`mask_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`mask_net_limit`, math.floor(RENDER_DURATION/netDuration))
-					end
-
-				end
-
-				do
-					local searchMeasurements: {[string]: {[number]: number}} = {}
+			else
+				local part = debugMaid:GiveTask(Instance.new("Part"))
+				part.Anchored = true
+				part.Transparency = 1
+				part.Color = Color3.new(1,1,1)
+				part.Transparency = 0.7
+				part.Size = Vector3.new(
+					frustum.HalfNearPlaneWidth*2,
+					frustum.HalfNearPlaneHeight*2,
+					0.01
+				)
+				part.CFrame = frustum.CFrame * CFrame.new(0,0,frustum.NearPlaneZ)
 				
+				local surfaceGui = debugMaid:GiveTask(Instance.new("SurfaceGui"))
+				surfaceGui.Face = Enum.NormalId.Back
+				surfaceGui.Parent = part
 
-					for part, outerRect in pairs(partOuterRectRegistry) do
-						local innerRect = partInnerRectRegistry[part]
-						searchMeasurements[part.Name] = searchMeasurements[part.Name] or {}
+				part.Parent = workspace
 
-						local start = tick()
-						local isOccluded = mask:GetIfOccluded(part)
+				screen = surfaceGui
 
-						local finish = tick()
-
-						do
-							_drawRect(
-								innerRect,
-								if not isOccluded then Color3.new(0, 1, 1) else Color3.new(1,0,0),
-								if not isOccluded then 0.4 else 0.1,
-								self.MaxRenderDistance - (part.Position - self.Instance.CFrame.Position).Magnitude
-							)
-						end
-
-						table.insert(searchMeasurements[part.Name], finish - start)
-					end
-		
-					do
-						local netSum = 0
-						local netCount = 0
-						for k, vList in pairs(searchMeasurements) do
-							local sum = 0
-							local count = #vList
-							for i, v in ipairs(vList) do
-								sum += v
-							end
-							netSum += sum
-							netCount += count
-							local duration = sum/count
-							self.Instance:SetAttribute(`_search_{k}_ms`, toMilliseconds(duration))
-							self.Instance:SetAttribute(`_search_{k}_limit`, math.floor(RENDER_DURATION/duration))
-						end
-	
-						local netDuration = netSum/netCount
-						self.Instance:SetAttribute(`search_net_ms`, toMilliseconds(netDuration))
-						self.Instance:SetAttribute(`search_net_limit`, math.floor(RENDER_DURATION/netDuration))
-					end
-
-				end
-
-				
-				self._Maid._screen = screen
 			end
-			local isPlaying = false
-			self._Maid:GiveTask(RunService.RenderStepped:Connect(function(deltaTime: number)
-				if isPlaying then
-					update(deltaTime)
-				end
-			end))
-			self._Maid:GiveTask(UserInputService.InputBegan:Connect(function(inputObject: InputObject)
-				if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
-					isPlaying = false
-					update(1/60)
-				elseif inputObject.UserInputType == Enum.UserInputType.MouseButton2 then
-					isPlaying = true
-				end
-			end))
-			self._Maid:GiveTask(UserInputService.InputEnded:Connect(function(inputObject: InputObject)
-				if inputObject.UserInputType == Enum.UserInputType.MouseButton2 then
-					isPlaying = false
-				end
-			end))
-			task.spawn(function()
-				update(1/60)
-			end)
-		end
-	else
 
+			if DEBUG_CULLING then
+				DebugUtil.culling(frustum, self.Parts)	
+			end
+
+			if DEBUG_SHAPE then
+				DebugUtil.shape(screen, frustum, self.Parts)
+			end
+
+			if DEBUG_INNER_BOUNDS then
+				DebugUtil.innerBounds(screen, frustum, self.Parts)
+			end
+
+			if DEBUG_OUTER_BOUNDS then
+				DebugUtil.outerBounds(screen, frustum, self.Parts)
+			end
+
+			if DEBUG_REGISTER_MASK then
+				DebugUtil.maskRegister(screen, frustum, self.Parts)
+			end
+
+			if DEBUG_SEARCH_MASK then
+				DebugUtil.maskSearch(screen, frustum, self.Parts)
+			end
+		end
+
+		local isPlaying = false
+		self._Maid:GiveTask(RunService.RenderStepped:Connect(function(deltaTime: number)
+			if isPlaying then
+				onDebugUpdate()
+			end
+		end))
+		self._Maid:GiveTask(UserInputService.InputBegan:Connect(function(inputObject: InputObject)
+			if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
+				isPlaying = false
+				onDebugUpdate()
+			elseif inputObject.UserInputType == Enum.UserInputType.MouseButton2 then
+				isPlaying = true
+			end
+		end))
+		self._Maid:GiveTask(UserInputService.InputEnded:Connect(function(inputObject: InputObject)
+			if inputObject.UserInputType == Enum.UserInputType.MouseButton2 then
+				isPlaying = false
+			end
+		end))
+		task.spawn(onDebugUpdate)
+	else
 
 		self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 			if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then
@@ -622,14 +315,10 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 					end
 				end
 
-				if not NO_DEBUG_RENDER then
-					self._Maid._frustumDraw = frustum:Draw()
-				end
-
 				local outerRectRegistry: {[BasePart]: Rect} = {}
 				local innerRectRegistry: {[BasePart]: Rect} = {}
 
-				for i, part in ipairs(parts) do
+				for i, part in ipairs(self.Parts) do
 					local shape = frustum:GetProjectedShape(part.CFrame, part.Size)
 					local outerRect = frustum:GetOuterBlockBounds(shape)
 					local innerRect = frustum:GetOuterBlockBounds(shape)

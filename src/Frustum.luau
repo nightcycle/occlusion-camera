@@ -77,7 +77,6 @@ export type Frustum = {
 	new: (camera: Camera, farPlaneZ: number) -> Frustum,
 }
 -- Constants
-local USE_EXACT_CULLING = Config.Debug.UseExactCulling
 -- local USE_CUSTOM_VIEWPORT_MATH = true
 
 -- Variables
@@ -508,19 +507,19 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 end
 
 function Frustum:GetIfOverlapFrustum(part: BasePart)
-	if not USE_EXACT_CULLING then
-		return self:GetIfSphereRendered(part.Position, part.Size.Magnitude/2)
-	else
-		if part:IsA("Part") then
-			if part.Shape == Enum.PartType.Ball then
-				return self:GetIfSphereRendered(part.Position, part.Size.Magnitude/2)
-			else
-				return self:GetIfBlockRendered(part.CFrame, part.Size)
-			end
-		else
-			return self:GetIfBlockRendered(part.CFrame, part.Size)
-		end
-	end
+	-- if not USE_EXACT_CULLING then
+	return self:GetIfSphereRendered(part.Position, part.Size.Magnitude/2)
+	-- else
+	-- 	if part:IsA("Part") then
+	-- 		if part.Shape == Enum.PartType.Ball then
+	-- 			return self:GetIfSphereRendered(part.Position, part.Size.Magnitude/2)
+	-- 		else
+	-- 			return self:GetIfBlockRendered(part.CFrame, part.Size)
+	-- 		end
+	-- 	else
+	-- 		return self:GetIfBlockRendered(part.CFrame, part.Size)
+	-- 	end
+	-- end
 end
 
 function Frustum:Draw(): Folder
@@ -535,7 +534,7 @@ function Frustum:Draw(): Folder
 		line(ray.Origin, ray.Direction, Color3.new(1,0,1))
 	end
 
-	folder.Parent = workspace.CurrentCamera
+	folder.Parent = self.Camera
 	return folder
 end
 
