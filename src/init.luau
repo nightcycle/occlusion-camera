@@ -30,7 +30,10 @@ local DEBUG_INNER_BOUNDS = Config.Debug.InnerBounds
 local DEBUG_OUTER_BOUNDS = Config.Debug.OuterBounds
 local DEBUG_REGISTER_MASK = Config.Debug.RegisterMask
 local DEBUG_SEARCH_MASK = Config.Debug.SearchMask
-local IS_DEBUG = DEBUG_CULLING or DEBUG_SHAPE or DEBUG_INNER_BOUNDS or DEBUG_OUTER_BOUNDS or DEBUG_SEARCH_MASK or DEBUG_REGISTER_MASK
+local DEBUG_TOTAL = Config.Debug.Total
+local PAUSE_MODE = true
+
+local IS_DEBUG = DEBUG_CULLING or DEBUG_SHAPE or DEBUG_INNER_BOUNDS or DEBUG_OUTER_BOUNDS or DEBUG_SEARCH_MASK or DEBUG_REGISTER_MASK or DEBUG_TOTAL
 
 local IN_FRUSTUM_TAG = Config.Tag.InFrustum
 local VISIBLE_TAG = Config.Tag.Visible
@@ -60,7 +63,6 @@ export type OcclusionCamera = {
 	OnlyUpdateOnCameraMove: boolean,
 	SampleCount: number,
 	WorldRoot: WorldRoot,
-	RaycastParams: RaycastParams,
 	ObscureDelay: number,
 	OnViewPart: Signal,
 	OnObscurePart: Signal,
@@ -140,80 +142,7 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 
 	self.ObscureDelay = 1
 
-	self.RaycastParams = RaycastParams.new()
-	self.RaycastParams.FilterType = Enum.RaycastFilterType.Include
-	self.RaycastParams.FilterDescendantsInstances = {}
-	self.RaycastParams.IgnoreWater = false
-	self.RaycastParams.RespectCanCollide = false
 
-	local prevCF: CFrame?
-
-	local function onVisibleTag(inst: Instance)
-		assert(inst:IsA("BasePart"))
-		self.OnViewPart:Fire(inst)
-	end
-
-	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(VISIBLE_TAG):Connect(onVisibleTag))
-	for i, inst in ipairs(CollectionService:GetTagged(VISIBLE_TAG)) do
-		onVisibleTag(inst)
-	end
-
-	-- local function onInitialObscureTag(inst: Instance)
-	-- 	assert(inst:IsA("BasePart"))
-	-- 	if self.ObscureDelay > 0 then
-	-- 		task.wait(self.ObscureDelay)
-
-	-- 		if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) and self._IsAlive then
-	-- 			if not CollectionService:HasTag(inst, OBSCURED_TAG) then
-	-- 				CollectionService:AddTag(inst, OBSCURED_TAG)
-	-- 			end
-	-- 		end
-	-- 	else
-	-- 		if not CollectionService:HasTag(inst, OBSCURED_TAG) then
-	-- 			CollectionService:AddTag(inst, OBSCURED_TAG)
-	-- 		end
-	-- 	end
-	-- end
-
-	-- self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(INITIAL_OBSCURED_TAG):Connect(onInitialObscureTag))
-	-- for i, inst in ipairs(CollectionService:GetTagged(INITIAL_OBSCURED_TAG)) do
-	-- 	onInitialObscureTag(inst)
-	-- end
-
-	-- local function onObscureTag(inst: Instance)
-	-- 	assert(inst:IsA("BasePart"))
-	-- 	self.OnObscurePart:Fire(inst)
-	-- end
-	-- self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(OBSCURED_TAG):Connect(onObscureTag))
-	-- for i, inst in ipairs(CollectionService:GetTagged(OBSCURED_TAG)) do
-	-- 	onObscureTag(inst)
-	-- end
-
-	local function onFrustumTag(inst: Instance)
-		assert(inst:IsA("BasePart"))
-		self.OnPartEnterFrustum:Fire(inst)
-	end
-
-	self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(IN_FRUSTUM_TAG):Connect(onFrustumTag))
-	for i, inst in ipairs(CollectionService:GetTagged(IN_FRUSTUM_TAG)) do
-		onFrustumTag(inst)
-	end
-
-	local function onRemoveFrustumTag(inst: Instance)
-		if not inst:IsDescendantOf(game) then return end
-		inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
-		-- if CollectionService:HasTag(inst, OBSCURED_TAG) then
-		-- 	CollectionService:RemoveTag(inst, OBSCURED_TAG)
-		-- end
-		-- if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
-		-- 	CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
-		-- end
-		if CollectionService:HasTag(inst, VISIBLE_TAG) then
-			CollectionService:RemoveTag(inst, VISIBLE_TAG)
-		end
-		self.OnPartExitFrustum:Fire(inst)
-	end
-	self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(onRemoveFrustumTag))
 
 	if IS_DEBUG then
 		
@@ -223,12 +152,17 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			debugMaid:DoCleaning()
 			local frustum = Frustum.new(self.Instance, self.MaxRenderDistance)
 
+			if self.Instance ~= workspace.CurrentCamera then
+				debugMaid:GiveTask(frustum:Draw())
+			end
+
 			local screen: LayerCollector
 			if self.Instance == workspace.CurrentCamera then
 				screen = debugMaid:GiveTask(Instance.new("ScreenGui"))
 				screen.Parent = game:GetService("CoreGui")
 			else
 				local part = debugMaid:GiveTask(Instance.new("Part"))
+				part.Name = "ClippingPlane"
 				part.Anchored = true
 				part.Transparency = 1
 				part.Color = Color3.new(1,1,1)
@@ -241,6 +175,8 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 				part.CFrame = frustum.CFrame * CFrame.new(0,0,frustum.NearPlaneZ)
 				
 				local surfaceGui = debugMaid:GiveTask(Instance.new("SurfaceGui"))
+				surfaceGui.CanvasSize = frustum.ViewportSize
+				-- surfaceGui.ClipsDescendants = true
 				surfaceGui.Face = Enum.NormalId.Back
 				surfaceGui.Parent = part
 
@@ -273,11 +209,19 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 			if DEBUG_SEARCH_MASK then
 				DebugUtil.maskSearch(screen, frustum, self.Parts)
 			end
+
+			if DEBUG_SEARCH_MASK then
+				DebugUtil.maskSearch(screen, frustum, self.Parts)
+			end
+
+			if DEBUG_TOTAL then
+				DebugUtil.total(screen, frustum, self.Parts)
+			end
 		end
 
 		local isPlaying = false
 		self._Maid:GiveTask(RunService.RenderStepped:Connect(function(deltaTime: number)
-			if isPlaying then
+			if isPlaying or not PAUSE_MODE then
 				onDebugUpdate()
 			end
 		end))
@@ -296,6 +240,73 @@ function OcclusionCamera.new(camera: Camera): OcclusionCamera
 		end))
 		task.spawn(onDebugUpdate)
 	else
+		local function onVisibleTag(inst: Instance)
+			assert(inst:IsA("BasePart"))
+			self.OnViewPart:Fire(inst)
+		end
+	
+		self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(VISIBLE_TAG):Connect(onVisibleTag))
+		for i, inst in ipairs(CollectionService:GetTagged(VISIBLE_TAG)) do
+			onVisibleTag(inst)
+		end
+	
+		-- local function onInitialObscureTag(inst: Instance)
+		-- 	assert(inst:IsA("BasePart"))
+		-- 	if self.ObscureDelay > 0 then
+		-- 		task.wait(self.ObscureDelay)
+	
+		-- 		if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) and self._IsAlive then
+		-- 			if not CollectionService:HasTag(inst, OBSCURED_TAG) then
+		-- 				CollectionService:AddTag(inst, OBSCURED_TAG)
+		-- 			end
+		-- 		end
+		-- 	else
+		-- 		if not CollectionService:HasTag(inst, OBSCURED_TAG) then
+		-- 			CollectionService:AddTag(inst, OBSCURED_TAG)
+		-- 		end
+		-- 	end
+		-- end
+	
+		-- self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(INITIAL_OBSCURED_TAG):Connect(onInitialObscureTag))
+		-- for i, inst in ipairs(CollectionService:GetTagged(INITIAL_OBSCURED_TAG)) do
+		-- 	onInitialObscureTag(inst)
+		-- end
+	
+		-- local function onObscureTag(inst: Instance)
+		-- 	assert(inst:IsA("BasePart"))
+		-- 	self.OnObscurePart:Fire(inst)
+		-- end
+		-- self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(OBSCURED_TAG):Connect(onObscureTag))
+		-- for i, inst in ipairs(CollectionService:GetTagged(OBSCURED_TAG)) do
+		-- 	onObscureTag(inst)
+		-- end
+	
+		local function onFrustumTag(inst: Instance)
+			assert(inst:IsA("BasePart"))
+			self.OnPartEnterFrustum:Fire(inst)
+		end
+	
+		self._Maid:GiveTask(CollectionService:GetInstanceAddedSignal(IN_FRUSTUM_TAG):Connect(onFrustumTag))
+		for i, inst in ipairs(CollectionService:GetTagged(IN_FRUSTUM_TAG)) do
+			onFrustumTag(inst)
+		end
+	
+		local function onRemoveFrustumTag(inst: Instance)
+			if not inst:IsDescendantOf(game) then return end
+			inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
+			-- if CollectionService:HasTag(inst, OBSCURED_TAG) then
+			-- 	CollectionService:RemoveTag(inst, OBSCURED_TAG)
+			-- end
+			-- if CollectionService:HasTag(inst, INITIAL_OBSCURED_TAG) then
+			-- 	CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
+			-- end
+			if CollectionService:HasTag(inst, VISIBLE_TAG) then
+				CollectionService:RemoveTag(inst, VISIBLE_TAG)
+			end
+			self.OnPartExitFrustum:Fire(inst)
+		end
+		self._Maid:GiveTask(CollectionService:GetInstanceRemovedSignal(IN_FRUSTUM_TAG):Connect(onRemoveFrustumTag))
+		local prevCF: CFrame?
 
 		self._Maid:GiveTask(RunService.PreRender:Connect(function(deltaTime: number)
 			if prevCF ~= self.Instance:GetRenderCFrame() or self.OnlyUpdateOnCameraMove == false then

@@ -63,6 +63,7 @@ return function(frame: Frame)
 
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
 
+
 		oCam.Parts = Map:GetChildren() :: any
 		oCam.MaxRenderDistance = MAX_RENDER_DISTANCE
 

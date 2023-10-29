@@ -307,7 +307,7 @@ end
 
 -- local debugEnabled = false
 function Util.toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Vector2, nearPlaneZ: number): (Vector3, boolean, boolean)
-
+	
 	-- print(`point: {point}`)
 	-- print(`cf: {cf.Position}`)
 	-- print(`wOffset: {point-cf.Position}`)

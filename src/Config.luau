@@ -13,9 +13,11 @@ return {
 		Culling = false,
 		Shape = true,
 		InnerBounds = false,
-		OuterBounds = false,
+		OuterBounds = true,
 		RegisterMask = false,
 		SearchMask = false,
+		Total = false,
+
 	},
 	Tag = {
 		InFrustum = "OcclusionCameraInFrustum",

@@ -283,10 +283,12 @@ function Frustum:GetProjectedShape(cf: CFrame, size: Vector3): {[number]: Vector
 	local areAnyInverted = false
 	local maxDist = self.ViewportSize.Magnitude
 
+	print("\n")
 	for i, v in ipairs(perimeter) do
 
 		local offset = cf:PointToObjectSpace(v)
 		local surfacePoint, isVisible, isInverted = self:GetViewportPosition(v)
+		print(`i={i},v=({v}),surfacePoint=({surfacePoint}), isVisible={isVisible}, isInverted={isInverted}`)
 		if isInverted then
 			areAnyInverted = true
 		end
@@ -299,86 +301,105 @@ function Frustum:GetProjectedShape(cf: CFrame, size: Vector3): {[number]: Vector
 			math.round(surfacePoint.X),
 			math.round(surfacePoint.Y)
 		)
+
 		points[i] = point
 		visibility[i] = isVisible
 		inversion[i] = isInverted
 		offsets[i] = offset
 	end
 
+	print("\n")
 
 	if areAnyInverted then
 
-		local finalPoints: {[number]: Vector2} = {}
+		local isSuccessfulUpdate = true
+		local function updatePoints()
 
-		local planeOrigin = (self.CFrame * CFrame.new(0,0,self.NearPlaneZ)).Position
+			local finalPoints: {[number]: Vector2} = {}
 
-		for i, v in ipairs(perimeter) do
-			-- print(`\ni={i}, inversion[i]={inversion[i]}`)
-			if inversion[i] == true then
-				local pI = if i-1 < 1 then #points else i-1
-				-- print(`pi={pI}`)
-				local nI = if i+1 > #points then 1 else i+1
-				-- print(`nI={nI}`)
+			local planeOrigin = (self.CFrame * CFrame.new(0,0,self.NearPlaneZ)).Position
+	
+			for i, v in ipairs(perimeter) do
+				print(`\ni={i}, inversion[{i}]={inversion[i]}`)
+				if inversion[i] == true then
+					local pI = if i-1 < 1 then #points else i-1
+					print(`pi={pI}`)
+					local nI = if i+1 > #points then 1 else i+1
+					print(`nI={nI}`)
+	
+					local function addPoint(origin: Vector3, direction: Vector3, index: number)
+						-- direction = direction.Unit
+						local intersection = getPlaneIntersection(
+							planeOrigin,
+							-self.CFrame.LookVector,
+							origin,
+							direction
+						)
+						-- print(`intersection={intersection}`)
+						if not intersection then
+							intersection = origin + direction
+							-- print(`maxxed={intersection}`)
+						end
+						assert(intersection)
+						perimeter[i] = intersection
 
-				local function addPoint(origin: Vector3, direction: Vector3, index: number)
-					-- direction = direction.Unit
-					local intersection = getPlaneIntersection(
-						planeOrigin,
-						-self.CFrame.LookVector,
-						origin,
-						direction
-					)
-					-- print(`intersection={intersection}`)
-					if not intersection then
-						intersection = origin + direction
-						-- print(`maxxed={intersection}`)
+						local surfacePoint, _isVisible, _isInverted = self:GetViewportPosition(intersection - direction.Unit*0.0015)
+						local sP2 = Vector2.new(
+							(surfacePoint.X),
+							(surfacePoint.Y)
+						)
+						sP2 = ((sP2 - points[index]).Unit * maxDist * 3) + points[index]
+						print(`surfacePoint=({surfacePoint}), isVisible={_isVisible}, isInverted={_isInverted}`)
+	
+						finalPoints[i] = Vector2.new(
+							math.round(sP2.X),
+							math.round(sP2.Y)
+						)
 					end
-					assert(intersection)
-
-					local surfacePoint, _isVisible, _isInverted = self:GetViewportPosition(intersection - direction.Unit*0.0015)
-					local sP2 = Vector2.new(
-						(surfacePoint.X),
-						(surfacePoint.Y)
-					)
-					sP2 = ((sP2 - points[index]).Unit * maxDist * 3) + points[index]
-					-- print(`surfacePoint={surfacePoint}, isVisible={_isVisible}, isInverted={_isInverted}`)
-
-					finalPoints[i] = Vector2.new(
-						math.round(sP2.X),
-						math.round(sP2.Y)
-					)
-				end
-
-				-- print(`inversion[pI]={inversion[pI]}`)
-				-- print(`inversion[nI]={inversion[nI]}`)
-				if inversion[pI] == false then
-
-					local pV = perimeter[pI]
-					local direction = v - pV
-					-- print(`pV={pV}`)
-					-- print(`direction={direction}`)
-					addPoint(pV, direction, pI)
-				elseif inversion[nI] == false then
-					local nV = perimeter[nI]
-					local direction = v - nV
-					-- print(`nV={nV}`)
-					-- print(`direction={direction}`)
-					addPoint(nV, direction, nI)
+	
+					print(`inversion[{pI}]={inversion[pI]}`)
+					print(`inversion[{nI}]={inversion[nI]}`)
+					if inversion[pI] == false then
+	
+						local pV = perimeter[pI]
+						local direction = v - pV
+						-- print(`pV={pV}`)
+						-- print(`direction={direction}`)
+						addPoint(pV, direction, pI)
+					elseif inversion[nI] == false then
+						local nV = perimeter[nI]
+						local direction = v - nV
+						print(`nV=({nV})`)
+						print(`direction=({direction})`)
+						addPoint(nV, direction, nI)
+					else
+						warn(`edit failed, adding original point`)
+						isSuccessfulUpdate = false
+						finalPoints[i] = points[i]
+					end
 				else
-					-- print(`edit failed, adding original point`)
-
+					print(`no edit needed, adding original point`)
+	
 					finalPoints[i] = points[i]
 				end
-			else
-				-- print(`no edit needed, adding original point`)
-
-				finalPoints[i] = points[i]
 			end
+			-- print(finalPoints)
+			return finalPoints
+	
 		end
-		-- print(finalPoints)
-		return finalPoints
-	end
 
+		local out: {[number]: Vector2} = {}
+
+		local attempt = 0
+		repeat
+			isSuccessfulUpdate = true
+			attempt += 1
+			out = updatePoints()
+		until isSuccessfulUpdate or attempt > 5
+
+		return out
+	end
+	print("\n")
 
 	return points
 end
@@ -525,7 +546,7 @@ end
 function Frustum:Draw(): Folder
 	local folder = Instance.new("Folder")
 	local function line(origin: Vector3, direction: Vector3, color: Color3)
-		local vec = Draw.vector(origin, direction, color, folder, 2)
+		local vec = Draw.vector(origin, direction, color, folder, 1)
 		vec.Locked = true
 		vec.Archivable = false
 	end
