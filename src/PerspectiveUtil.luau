@@ -7,7 +7,7 @@ local _Packages = _Package.Parent
 -- Packages
 
 -- Modules
-local ShapeUtil = require(_Package:WaitForChild("ShapeUtil"))
+-- local ShapeUtil = require(_Package:WaitForChild("ShapeUtil"))
 
 -- Types
 type CornerId = "XYZ" | "xYZ" | "XYz" | "xYz" | "XyZ" | "xyZ" | "Xyz" | "xyz"
@@ -293,8 +293,8 @@ function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraCF: CFrame): {[
 
 	for j, triangle in ipairs(triangleData) do
 		addTriangle(
-			triangle[1] :: CornerId, 
-			triangle[2] :: CornerId, 
+			triangle[1] :: CornerId,
+			triangle[2] :: CornerId,
 			triangle[3] :: CornerId
 		)
 
@@ -307,7 +307,7 @@ end
 
 -- local debugEnabled = false
 function Util.toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Vector2, nearPlaneZ: number): (Vector3, boolean, boolean)
-	
+
 	-- print(`point: {point}`)
 	-- print(`cf: {cf.Position}`)
 	-- print(`wOffset: {point-cf.Position}`)
@@ -324,7 +324,7 @@ function Util.toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Ve
 
 	local offset: Vector3 = cf:PointToObjectSpace(point)
 	-- if debugEnabled then print(`offset: {offset}`) end
-		
+
 
 	local halfNearPlaneHeight = 2 * math.tan(halfFieldOfView) * -nearPlaneZ / 2
 	-- if debugEnabled then print(`halfNearPlaneHeight: {halfNearPlaneHeight}`) end
@@ -357,7 +357,7 @@ function Util.toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Ve
 	local yTan = math.tan(yAngle)
 
 
-	
+
 	-- if debugEnabled then print(`xTan: {xTan}`) end
 	-- if debugEnabled then print(`yTan: {yTan}`) end
 
@@ -366,7 +366,7 @@ function Util.toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Ve
 	-- if debugEnabled then print(`xOffset: {xOffset}`) end
 	-- if debugEnabled then print(`yOffset: {yOffset}`) end
 
-	
+
 	local xAlpha = 0.5 * (xOffset / halfNearPlaneWidth) + 0.5
 	local yAlpha = 1 - (0.5 * (yOffset / halfNearPlaneHeight) + 0.5)
 	-- if debugEnabled then print(`xAlpha: {xAlpha}`) end
@@ -395,7 +395,7 @@ function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraCF: CFrame): {[
 
 	local centerId: PerspectiveId = getCenterId(cf, size, cameraCF)
 
-	
+
 	if centerId:len() == 0 then return {} end
 
 	local perimeterData = PERIMETER_DATA[centerId]

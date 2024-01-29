@@ -3,18 +3,11 @@ local _Package = script.Parent
 local _Packages = _Package.Parent
 -- Services
 local RunService = game:GetService("RunService")
-local CollectionService = game:GetService("CollectionService")
 -- Packages
 local Maid = require(_Packages:WaitForChild("Maid"))
 -- Modules
-local Config = require(_Package:WaitForChild("Config"))
 -- Types
 -- Constants
-local IN_FRUSTUM_TAG = Config.Tag.InFrustum
-local OBSCURED_TAG = Config.Tag.Obscured
-local INITIAL_OBSCURED_TAG = Config.Tag.InitialObscured
-local VISIBLE_TAG = Config.Tag.Visible
-local LAST_SEEN_ATTR_KEY = Config.Attribute.LastSeen
 local FIELD_OF_VIEW = 55
 local MAX_RENDER_DISTANCE = 2048
 local USE_REAL_CAMERA = false
@@ -25,13 +18,12 @@ local Map = workspace:WaitForChild("MediumMap")
 -- Class
 return function(frame: Frame)
 	local maid = Maid.new()
-			
+
 	local isDead = false
 	task.spawn(function()
 		task.wait(1)
 		if isDead then return end
 		local OcclusionCamera = require(_Package)
-
 
 		local part = workspace:FindFirstChild("CameraHolder")
 		if not part then
@@ -42,7 +34,7 @@ return function(frame: Frame)
 			part.Size = Vector3.new(2, 1, 0.05)
 			part.Anchored = true
 			part.Parent = workspace
-			
+
 		end
 		assert(part and part:IsA("BasePart"))
 		for k, v in pairs(part:GetAttributes()) do
@@ -58,7 +50,7 @@ return function(frame: Frame)
 			camera:SetAttribute("ViewportSize", Vector2.new(1280, 800))
 			camera.FieldOfView = FIELD_OF_VIEW
 			camera.Parent = part
-			
+
 			maid:GiveTask(camera.AttributeChanged:Connect(function(key: string)
 				part:SetAttribute(key, camera:GetAttribute(key))
 			end))
@@ -66,7 +58,7 @@ return function(frame: Frame)
 			for k, v in pairs(camera:GetAttributes()) do
 				part:SetAttribute(k, v)
 			end
-		end		
+		end
 
 		local oCam = maid:GiveTask(OcclusionCamera.new(camera))
 		oCam.OnlyUpdateOnCameraMove = false
@@ -78,27 +70,13 @@ return function(frame: Frame)
 			end
 		end))
 
-		-- maid:GiveTask(oCam.OnPartEnterFrustum:Connect(function(part: BasePart)
-		-- 	part.Color = Color3.new(1,1,0)
-		-- end))
-
-		-- maid:GiveTask(oCam.OnObscurePart:Connect(function(part: BasePart)
-		-- 	part.Color = Color3.new(1,0,0)
-		-- end))
-		-- maid:GiveTask(oCam.OnViewPart:Connect(function(part: BasePart)
-		-- 	part.Color = Color3.new(0,0,1)
-		
-		-- end))
-		-- maid:GiveTask(oCam.OnPartExitFrustum:Connect(function(part: BasePart)
-		-- 	part.Color = Color3.new(0,0,0)
-		-- end))
 
 		local parts: {[number]: BasePart} = Map:GetChildren() :: any
 
 		maid:GiveTask(RunService.RenderStepped:Connect(function()
 			for i, part in ipairs(parts) do
-				if oCam:GetIfPartIsInFrustum(part) then
-					if not oCam:GetIfPartIsVisible(part) then
+				if oCam:GetIfInFrustum(part) then
+					if not oCam:GetIfVisible(part) then
 						part.Color = Color3.new(1,0,0)
 					else
 						part.Color = Color3.new(0,0,1)
@@ -108,21 +86,21 @@ return function(frame: Frame)
 				end
 			end
 		end))
-
-		oCam.Parts = parts
-
 	end)
 	return function()
 		isDead = true
 		maid:Destroy()
-		for i, inst in ipairs(CollectionService:GetTagged(IN_FRUSTUM_TAG)) do
-			CollectionService:RemoveTag(inst, OBSCURED_TAG)
-			CollectionService:RemoveTag(inst, INITIAL_OBSCURED_TAG)
-			CollectionService:RemoveTag(inst, VISIBLE_TAG)
-			inst:SetAttribute(LAST_SEEN_ATTR_KEY, nil)
-		end
+
 		for i, inst in ipairs(Map:GetChildren()) do
 			if inst:IsA("BasePart") then
+
+				for k,v in pairs(inst:GetAttributes()) do
+					inst:SetAttribute(k, nil)
+				end
+
+				for j,k in ipairs(inst:GetTags()) do
+					inst:RemoveTag(k)
+				end
 				inst.Color = Color3.fromHSV(0,0,0.8)
 				local decal = inst:FindFirstChildOfClass("Decal")
 				if decal then
