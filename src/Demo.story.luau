@@ -14,7 +14,7 @@ local USE_REAL_CAMERA = false
 
 -- Variables
 -- References
-local Map = workspace:WaitForChild("MediumMap")
+local Map = workspace:WaitForChild("OcclusionMap")
 -- Class
 return function(frame: Frame)
 	local maid = Maid.new()

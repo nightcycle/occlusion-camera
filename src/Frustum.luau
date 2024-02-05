@@ -43,18 +43,16 @@ export type Frustum = {
 	NearBottomRight: Vector3,
 	Rays: {[number]: Ray},
 	Planes: {[string]: Plane},
-
+	__eq: (self: Frustum, other: unknown) -> boolean,
 	_GetIfPointIsCloseEnough: (self: Frustum, point: Vector3) -> boolean,
-	GetViewportPosition: (self: Frustum, point: Vector3) -> (Vector3, boolean),
 	GetIfPointRendered: (self: Frustum, point: Vector3) -> boolean,
 	GetIfRectangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> boolean,
 	GetIfTriangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3) -> boolean,
-	GetIfRayRendered: (self: Frustum, ray: Ray) -> boolean,
+	-- GetIfRayRendered: (self: Frustum, ray: Ray) -> boolean,
 	GetIfSphereRendered: (self: Frustum, origin: Vector3, radius: number) -> boolean,
 	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3) -> boolean,
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
 	GetIfOverlapFrustum: (self: Frustum, part: BasePart) -> boolean,
-
 	_Draw: (self: Frustum) -> Folder,
 	new: (cf: CFrame, fieldOfView: number, viewportSize: Vector2, nearPlaneZ: number, maxRenderDistance: number) -> Frustum,
 	fromCamera: (camera: Camera, maxRenderDistance: number) -> Frustum,
@@ -169,104 +167,9 @@ function getTriangleIntersection(rayOrigin: Vector3, rayDirection: Vector3, a: V
 	return nil
 end
 
-function toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Vector2, nearPlaneZ: number): (Vector3, boolean, boolean)
-
-	-- print(`point: {point}`)
-	-- print(`cf: {cf.Position}`)
-	-- print(`wOffset: {point-cf.Position}`)
-
-	-- if debugEnabled then print(`vSize: {vSize}`) end
-
-	-- if debugEnabled then print(`nearPlaneZ: {nearPlaneZ}`) end
-
-	local aspectRatio = vSize.X / vSize.Y
-	-- if debugEnabled then print(`aspectRatio: {aspectRatio}`) end
-
-	local halfFieldOfView = math.rad(fov) * 0.5
-	-- if debugEnabled then print(`halfFieldOfView: {fov*0.5}`) end
-
-	local offset: Vector3 = cf:PointToObjectSpace(point)
-	-- if debugEnabled then print(`offset: {offset}`) end
-
-
-	local halfNearPlaneHeight = 2 * math.tan(halfFieldOfView) * -nearPlaneZ / 2
-	-- if debugEnabled then print(`halfNearPlaneHeight: {halfNearPlaneHeight}`) end
-
-	local halfNearPlaneWidth = halfNearPlaneHeight * aspectRatio
-	-- if debugEnabled then print(`halfNearPlaneWidth: {halfNearPlaneWidth}`) end
-
-
-	local xAngle = math.atan2(offset.X, offset.Z)
-	local yAngle = math.atan2(offset.Y, offset.Z)
-
-	-- if debugEnabled then print(`xAngle: {math.deg(xAngle)}`) end
-	-- if debugEnabled then print(`yAngle: {math.deg(yAngle)}`) end
-
-	-- if offset.Z > 0 then
-	-- 	if xAngle < 0 then
-	-- 		xAngle += math.rad(180)
-	-- 	else
-	-- 		xAngle -= math.rad(180)
-	-- 	end
-	-- 	if yAngle < 0 then
-	-- 		yAngle += math.rad(180)
-	-- 	else
-	-- 		yAngle -= math.rad(180)
-	-- 	end
-	-- end
-
-
-	local xTan = math.tan(xAngle)
-	local yTan = math.tan(yAngle)
-
-
-
-	-- if debugEnabled then print(`xTan: {xTan}`) end
-	-- if debugEnabled then print(`yTan: {yTan}`) end
-
-	local xOffset = (xTan * nearPlaneZ)
-	local yOffset = (yTan * nearPlaneZ)
-	-- if debugEnabled then print(`xOffset: {xOffset}`) end
-	-- if debugEnabled then print(`yOffset: {yOffset}`) end
-
-
-	local xAlpha = 0.5 * (xOffset / halfNearPlaneWidth) + 0.5
-	local yAlpha = 1 - (0.5 * (yOffset / halfNearPlaneHeight) + 0.5)
-	-- if debugEnabled then print(`xAlpha: {xAlpha}`) end
-	-- if debugEnabled then print(`yAlpha: {yAlpha}`) end
-
-
-
-	local screenPosition = vSize * Vector2.new(xAlpha, yAlpha)
-	-- if debugEnabled then print(`sP1: {screenPosition}`) end
-
-	screenPosition = Vector2.new(math.round(screenPosition.X), math.round(screenPosition.Y))
-	-- if debugEnabled then print(`sP2: {screenPosition}`) end
-
-	local isVisible = math.sign(offset.Z) == -1 and (screenPosition.X >= 0 and screenPosition.X <= vSize.X) and (screenPosition.Y >= 0 and screenPosition.Y <= vSize.Y)
-	-- if debugEnabled then print(`isVisible: {isVisible}`) end
-
-	local out = Vector3.new(screenPosition.X, screenPosition.Y, math.sign(offset.Z))
-	-- if debugEnabled then print(`sPF: {out}`) end
-
-	local isInverted = offset.Z > 0
-
-	return out, isVisible, isInverted
-end
-
 -- Class
 local Frustum = {} :: Frustum
 Frustum.__index = Frustum
-
-function Frustum:GetViewportPosition(point: Vector3): (Vector3, boolean)
-	return toViewportPoint(
-		point,
-		self.CFrame,
-		self.FieldOfView,
-		self.ViewportSize,
-		self.NearPlaneZ
-	)
-end
 
 function Frustum:_GetIfPointIsCloseEnough(point: Vector3): boolean
 	local offset = self.CFrame:PointToObjectSpace(point)
@@ -277,35 +180,35 @@ function Frustum:GetIfPointRendered(point: Vector3): boolean
 	return self:GetIfSphereRendered(point, 0)
 end
 
-function Frustum:GetIfRayRendered(ray: Ray): boolean
-	if not self:GetIfSphereRendered(ray.Origin + ray.Direction/2, ray.Direction.Magnitude/2) then return false end
+-- function Frustum:GetIfRayRendered(ray: Ray): boolean
+-- 	if not self:GetIfSphereRendered(ray.Origin + ray.Direction/2, ray.Direction.Magnitude/2) then return false end
 
-	if self:GetIfPointRendered(ray.Origin) then
-		return true
-	end
+-- 	if self:GetIfPointRendered(ray.Origin) then
+-- 		return true
+-- 	end
 
-	if self:GetIfPointRendered(ray.Origin + ray.Direction) then
-		return true
-	end
+-- 	if self:GetIfPointRendered(ray.Origin + ray.Direction) then
+-- 		return true
+-- 	end
 
-	for _, plane in pairs(self.Planes) do
-		local intersection = getPlaneIntersection(
-			plane.Origin,
-			plane.Normal,
-			ray.Origin,
-			ray.Direction
-		)
+-- 	for _, plane in pairs(self.Planes) do
+-- 		local intersection = getPlaneIntersection(
+-- 			plane.Origin,
+-- 			plane.Normal,
+-- 			ray.Origin,
+-- 			ray.Direction
+-- 		)
 
-		if intersection then
-			local _screenPos, isVisible = self:GetViewportPosition(intersection)
-			if isVisible then
-				return true
-			end
-		end
-	end
+-- 		if intersection then
+-- 			local _screenPos, isVisible = self:GetViewportPosition(intersection)
+-- 			if isVisible then
+-- 				return true
+-- 			end
+-- 		end
+-- 	end
 
-	return false
-end
+-- 	return false
+-- end
 
 function Frustum:GetIfSphereRendered(origin: Vector3, radius: number): boolean
 
@@ -438,8 +341,21 @@ function Frustum:_Draw(): Folder
 	for i, ray in ipairs(self.Rays) do
 		line(ray.Origin, ray.Direction, Color3.new(1,0,1))
 	end
+	folder.Name = "Frustum"
 
 	return folder
+end
+
+function Frustum:__eq(other: unknown): boolean
+	if type(other) ~= "table" then return false end
+	local otherTable: any = other
+	assert(type(otherTable) == "table")
+	if self.CFrame ~= otherTable.CFrame then return false end
+	if self.FieldOfView ~= otherTable.FieldOfView then return false end
+	if self.ViewportSize ~= otherTable.ViewportSize then return false end
+	if self.NearPlaneZ ~= otherTable.NearPlaneZ then return false end
+	if self.FarPlaneDistance ~= otherTable.FarPlaneDistance then return false end
+	return true
 end
 
 function Frustum.new(cf: CFrame, fieldOfView: number, viewportSize: Vector2, nearPlaneZ: number, maxRenderDistance: number): Frustum

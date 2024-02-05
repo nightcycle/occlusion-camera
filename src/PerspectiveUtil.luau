@@ -7,6 +7,7 @@ local _Packages = _Package.Parent
 -- Packages
 
 -- Modules
+local Frustum = require(script.Parent:WaitForChild("Frustum"))
 -- local ShapeUtil = require(_Package:WaitForChild("ShapeUtil"))
 
 -- Types
@@ -14,27 +15,10 @@ type CornerId = "XYZ" | "xYZ" | "XYz" | "xYz" | "XyZ" | "xyZ" | "Xyz" | "xyz"
 type EdgeId = "YZ" | "Yz" | "yZ" |  "yz" | "XZ" | "xZ" | "Xz" | "xz" | "XY" | "xY" | "Xy" | "xy"
 type FaceId = "X" | "x" | "Y" | "y" | "Z" | "z"
 type PerspectiveId = CornerId | EdgeId | FaceId
+type Frustum = Frustum.Frustum
 
 -- Constants
--- local INNER_BOX_DATA: {[PerspectiveId]: {
--- 	MinX: CornerId | EdgeId,
--- 	MaxX: CornerId | EdgeId,
--- 	MinY: CornerId | EdgeId,
--- 	MaxY: CornerId | EdgeId,
--- }} = {
--- 	XYZ = {
--- 		MinX = "Yz",
--- 		MinY = "Yx",
--- 		MaxX = "yx",
--- 		MaxY = "yz",
--- 	},
--- 	XYZ = {
--- 		MinX = "Yz",
--- 		MinY = "Yx",
--- 		MaxX = "yx",
--- 		MaxY = "yz",
--- 	},
--- }
+
 
 local TRIANGLE_DATA: {[PerspectiveId]: {[number]: {[number]: CornerId}}} = {
 	X = {
@@ -305,96 +289,9 @@ function Util.getWorldTriangles(cf: CFrame, size: Vector3, cameraCF: CFrame): {[
 	return triangles
 end
 
--- local debugEnabled = false
-function Util.toViewportPoint(point: Vector3, cf: CFrame, fov: number, vSize: Vector2, nearPlaneZ: number): (Vector3, boolean, boolean)
-
-	-- print(`point: {point}`)
-	-- print(`cf: {cf.Position}`)
-	-- print(`wOffset: {point-cf.Position}`)
-
-	-- if debugEnabled then print(`vSize: {vSize}`) end
-
-	-- if debugEnabled then print(`nearPlaneZ: {nearPlaneZ}`) end
-
-	local aspectRatio = vSize.X / vSize.Y
-	-- if debugEnabled then print(`aspectRatio: {aspectRatio}`) end
-
-	local halfFieldOfView = math.rad(fov) * 0.5
-	-- if debugEnabled then print(`halfFieldOfView: {fov*0.5}`) end
-
-	local offset: Vector3 = cf:PointToObjectSpace(point)
-	-- if debugEnabled then print(`offset: {offset}`) end
-
-
-	local halfNearPlaneHeight = 2 * math.tan(halfFieldOfView) * -nearPlaneZ / 2
-	-- if debugEnabled then print(`halfNearPlaneHeight: {halfNearPlaneHeight}`) end
-
-	local halfNearPlaneWidth = halfNearPlaneHeight * aspectRatio
-	-- if debugEnabled then print(`halfNearPlaneWidth: {halfNearPlaneWidth}`) end
-
-
-	local xAngle = math.atan2(offset.X, offset.Z)
-	local yAngle = math.atan2(offset.Y, offset.Z)
-
-	-- if debugEnabled then print(`xAngle: {math.deg(xAngle)}`) end
-	-- if debugEnabled then print(`yAngle: {math.deg(yAngle)}`) end
-
-	-- if offset.Z > 0 then
-	-- 	if xAngle < 0 then
-	-- 		xAngle += math.rad(180)
-	-- 	else
-	-- 		xAngle -= math.rad(180)
-	-- 	end
-	-- 	if yAngle < 0 then
-	-- 		yAngle += math.rad(180)
-	-- 	else
-	-- 		yAngle -= math.rad(180)
-	-- 	end
-	-- end
-
-
-	local xTan = math.tan(xAngle)
-	local yTan = math.tan(yAngle)
-
-
-
-	-- if debugEnabled then print(`xTan: {xTan}`) end
-	-- if debugEnabled then print(`yTan: {yTan}`) end
-
-	local xOffset = (xTan * nearPlaneZ)
-	local yOffset = (yTan * nearPlaneZ)
-	-- if debugEnabled then print(`xOffset: {xOffset}`) end
-	-- if debugEnabled then print(`yOffset: {yOffset}`) end
-
-
-	local xAlpha = 0.5 * (xOffset / halfNearPlaneWidth) + 0.5
-	local yAlpha = 1 - (0.5 * (yOffset / halfNearPlaneHeight) + 0.5)
-	-- if debugEnabled then print(`xAlpha: {xAlpha}`) end
-	-- if debugEnabled then print(`yAlpha: {yAlpha}`) end
-
-
-
-	local screenPosition = vSize * Vector2.new(xAlpha, yAlpha)
-	-- if debugEnabled then print(`sP1: {screenPosition}`) end
-
-	screenPosition = Vector2.new(math.round(screenPosition.X), math.round(screenPosition.Y))
-	-- if debugEnabled then print(`sP2: {screenPosition}`) end
-
-	local isVisible = math.sign(offset.Z) == -1 and (screenPosition.X >= 0 and screenPosition.X <= vSize.X) and (screenPosition.Y >= 0 and screenPosition.Y <= vSize.Y)
-	-- if debugEnabled then print(`isVisible: {isVisible}`) end
-
-	local out = Vector3.new(screenPosition.X, screenPosition.Y, math.sign(offset.Z))
-	-- if debugEnabled then print(`sPF: {out}`) end
-
-	local isInverted = offset.Z > 0
-
-	return out, isVisible, isInverted
-end
-
 function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraCF: CFrame): {[number]: Vector3}
 
 	local centerId: PerspectiveId = getCenterId(cf, size, cameraCF)
-
 
 	if centerId:len() == 0 then return {} end
 
@@ -412,4 +309,18 @@ function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraCF: CFrame): {[
 
 	return perimeter
 end
+
+function Util.getScreenPerimeter(cf: CFrame, size: Vector3, camera: Camera): {[number]: Vector3}
+	local worldPoints = Util.getWorldPerimeter(cf, size, camera:GetRenderCFrame())
+	local screenPoints: {[number]: Vector3} = {}
+	for i, v in ipairs(worldPoints) do
+
+		local screenPoint, isVisible = camera:WorldToViewportPoint(
+			v
+		)
+		screenPoints[i] = screenPoint
+	end
+	return screenPoints
+end
+
 return Util
