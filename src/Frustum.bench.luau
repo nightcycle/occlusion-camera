@@ -22,7 +22,7 @@ type Parameter = {
 local START = Vector3.new(-1000, 0, -1000)
 local FINISH = Vector3.new(1000, 250, 1000)
 local MID = START:Lerp(FINISH,  0.5)
-local SAMPLES_PER_TEST = 10
+local SAMPLES_PER_TEST = 1000
 -- Variables
 -- References
 local CullingMap = game.Workspace:WaitForChild("CullingMap") :: Folder
