@@ -216,6 +216,30 @@ local CORNER_OFFSET: {[CornerId]: Vector3} = {
 -- Variables
 -- References
 -- Private Functions
+-- https://stackoverflow.com/questions/5666222/3d-line-plane-intersection
+function getPlaneIntersection(
+	planeOrigin: Vector3,
+	planeNormal: Vector3,
+	rayOrigin: Vector3,
+	rayDirection: Vector3
+): Vector3?
+	local dot = planeNormal:Dot(rayDirection)
+	if math.abs(dot) > 1e-6 then
+		-- The factor of the point between rayOrigin -> rayLimit (0 - 1)
+		local w = rayOrigin - planeOrigin
+		-- if 'fac' is between (0 - 1) the point intersects with the segment.
+		-- Otherwise:
+		-- < 0.0: behind rayOrigin.
+		-- > 1.0: infront of rayLimit.
+		local fac = -(planeNormal:Dot(w)) / dot
+		if fac >= 0 and fac <= 1 then
+			rayDirection = rayDirection * fac
+			return rayOrigin + rayDirection
+		end
+	end
+	return nil
+end
+
 function getCenterId(cf: CFrame, size: Vector3, cameraCF: CFrame): PerspectiveId
 	local offset = cf:PointToObjectSpace(cameraCF.Position)
 	local x: string, y: string, z: string
@@ -312,15 +336,64 @@ end
 
 function Util.getScreenPerimeter(cf: CFrame, size: Vector3, camera: Camera): {[number]: Vector3}
 	local worldPoints = Util.getWorldPerimeter(cf, size, camera:GetRenderCFrame())
-	local screenPoints: {[number]: Vector3} = {}
-	for i, v in ipairs(worldPoints) do
+	local initialScreenPoints: {[number]: Vector3} = table.create(#worldPoints)
+	local pointVisibility: {[number]: boolean} = table.create(#worldPoints)
+	local visCount = 0
 
-		local screenPoint, isVisible = camera:WorldToViewportPoint(
+	for i, v in ipairs(worldPoints) do
+		initialScreenPoints[i], pointVisibility[i] = camera:WorldToViewportPoint(
 			v
 		)
-		screenPoints[i] = screenPoint
+
+		if pointVisibility[i] then
+			visCount += 1
+		end
 	end
-	return screenPoints
+	local lines: {[number]: Ray} = table.create(#worldPoints)
+
+	for i, a in ipairs(initialScreenPoints) do
+		local b = initialScreenPoints[i+1] or initialScreenPoints[1]
+		lines[i] = Ray.new(Vector3.new(a.X, a.Y, 0), Vector3.new(b.X, b.Y, 0)-Vector3.new(a.X, a.Y, 0))
+	end
+	local planes = {
+		[-1] = Ray.new(
+			Vector3.new(size.X/2,0),
+			Vector3.new(0,1)
+		),
+
+	}
+	local borders = {
+		Ray.new(
+			Vector3.new(0,0),
+			Vector3.new(0,-size.Y)
+		),
+		Ray.new(
+			Vector3.new(size.X,0),
+			Vector3.new(0,-size.Y)
+		),
+		Ray.new(
+			Vector3.new(0,0),
+			Vector3.new(size.X,0)
+		),
+		Ray.new(
+			Vector3.new(0,size.Y),
+			Vector3.new(size.X,0)
+		),
+	}
+
+	for i, line in ipairs(lines) do
+		if line.Direction.X > 0 and line.Direction.Y > 0 then --down right
+
+		elseif line.Direction.X > 0 and line.Direction.Y < 0 then --up right
+
+		elseif line.Direction.X < 0 and line.Direction.Y > 0 then --down left
+
+		elseif line.Direction.X < 0 and line.Direction.Y < 0 then --up left
+
+		end
+	end
+
+	return initialScreenPoints
 end
 
 return Util

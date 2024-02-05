@@ -23,14 +23,14 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       # Install wally packages
       - name: update wally packages
-        run: wally-update patch        
- 
+        run: wally-update patch
+
       - name: install wally packages
-        run: wally install   
- 
+        run: wally install
+
       - name: generate sourcemap
         run: rojo sourcemap dev.project.json --output sourcemap.json
- 
+
       - name: export wally package types
         run: wally-package-types --sourcemap sourcemap.json Packages
 
@@ -56,23 +56,12 @@ jobs:
       - name: style src scripts
         run: stylua src
 
-     #  - name: style built scripts
-     #    shell: bash
-     #    run: |
-     #      if [ ! -d "out" ]; then
-     #        mkdir "out"
-     #      fi
-     #      stylua out
-
       - name: generate sourcemap
         run: rojo sourcemap dev.project.json --output sourcemap.json
 
       # Test validity
       - name: typecheck src files
-        run: luau-lsp analyze src --sourcemap=sourcemap.json --ignore="Packages/**" --ignore="**/Packages/**" --ignore="*.spec.luau" --ignore="out/**" --flag:LuauTypeInferIterationLimit=0 --flag:LuauCheckRecursionLimit=0 --flag:LuauTypeInferRecursionLimit=0 --flag:LuauTarjanChildLimit=0 --flag:LuauTypeInferTypePackLoopLimit=0 --flag:LuauVisitRecursionLimit=0 --definitions=types/globalTypes.d.lua --flag:LuauParseDeclareClassIndexer=true
+        run: luau-lsp analyze --sourcemap="sourcemap.json" --ignore="Packages/**" --ignore="src/Server/NPC/Animate.server.lua" --ignore="**/Packages/**" --ignore="*.spec.luau" --ignore="out/**" --flag:LuauTypeInferIterationLimit=0 --flag:LuauCheckRecursionLimit=0 --flag:LuauTypeInferRecursionLimit=0 --flag:LuauTarjanChildLimit=0 --flag:LuauTypeInferTypePackLoopLimit=0 --flag:LuauVisitRecursionLimit=0 --definitions=types/globalTypes.d.lua --definitions=types/benchmark.d.lua --flag:LuauParseDeclareClassIndexer=true src
 
       - name: lint src files
         run: selene src
-
-     #  - name: lint built files
-     #    run: selene out

@@ -50,7 +50,7 @@ export type Frustum = {
 	GetIfTriangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3) -> boolean,
 	-- GetIfRayRendered: (self: Frustum, ray: Ray) -> boolean,
 	GetIfSphereRendered: (self: Frustum, origin: Vector3, radius: number) -> boolean,
-	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3) -> boolean,
+	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3, profiler: BenchmarkProfiler?) -> boolean,
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
 	GetIfOverlapFrustum: (self: Frustum, part: BasePart) -> boolean,
 	_Draw: (self: Frustum) -> Folder,
@@ -81,8 +81,13 @@ function newPlane(
 	return plane
 end
 
- -- https://stackoverflow.com/questions/5666222/3d-line-plane-intersection
-function getPlaneIntersection(planeOrigin: Vector3, planeNormal: Vector3, rayOrigin: Vector3, rayDirection: Vector3): Vector3?
+-- https://stackoverflow.com/questions/5666222/3d-line-plane-intersection
+function getPlaneIntersection(
+	planeOrigin: Vector3,
+	planeNormal: Vector3,
+	rayOrigin: Vector3,
+	rayDirection: Vector3
+): Vector3?
 	local dot = planeNormal:Dot(rayDirection)
 	if math.abs(dot) > 1e-6 then
 		-- The factor of the point between rayOrigin -> rayLimit (0 - 1)
@@ -276,8 +281,7 @@ function Frustum:GetIfPlaneRendered(origin: Vector3, normal: Vector3): boolean
 	return false
 end
 
-function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
-
+function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3, profiler: BenchmarkProfiler?): boolean
 	if self:GetIfSphereRendered(cf.Position, size.Magnitude/2) then
 
 		local lVec = self.CFrame.LookVector
@@ -287,6 +291,7 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 			{cf.UpVector * size.Y, cf.RightVector * size.X, -cf.LookVector * size.Z},
 			{-cf.LookVector * size.Z, cf.RightVector * size.X, cf.UpVector * size.Y}
 		}) do
+
 			local xVec = vectors[2]
 			local yVec = vectors[3]
 
@@ -310,8 +315,10 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 				end
 				return false
 			end
+
 			if vectors[1]:Dot(lVec) < 0 then
 				if solveFace(vectors[1]) then
+
 					return true
 				end
 			else
@@ -319,6 +326,7 @@ function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 					return true
 				end
 			end
+
 		end
 	end
 

@@ -1,15 +1,15 @@
 std = "lints/luau+roblox"
 exclude = [
-	"out/*", 
+	"out/*",
 	"*.spec.lua",
-	"*.spec.luau",  
-	"*.remodel.lua", 
+	"*.spec.luau",
+	"*.remodel.lua",
 	"*.rbxmk.lua",
 	"*.d.lua",
 	"*.story.lua",
 	"*.story.luau",
-	"gamework/*", 
-	"scripts/*", 
+	"gamework/*",
+	"scripts/*",
 ]
 [lints]
 unused_variable = "allow"

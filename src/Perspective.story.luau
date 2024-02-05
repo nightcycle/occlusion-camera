@@ -53,7 +53,7 @@ return function(frame: Frame)
 					5
 				))
 
-				drawMaid:GiveTask(Draw.point(v, Color3.new(1,0,0), nil, 10))
+				drawMaid:GiveTask(Draw.point(v, Color3.new(0,0,0), nil, 10))
 			end
 
 			editableImage.Size = imageLabel.AbsoluteSize
@@ -95,7 +95,7 @@ return function(frame: Frame)
 				)
 				editableImage:DrawCircle(
 					Vector2.new(v.X, v.Y),
-					20,
+					5,
 					Color3.new(1,0,1),
 					0
 				)
