@@ -215,13 +215,13 @@ local CORNER_OFFSET: {[CornerId]: Vector3} = {
 -- Variables
 -- References
 -- Private Functions
-function getBorderHit(
+local function getBorderHit(
 	originX: number, originY: number,
 	normalX: number, normalY: number, 
 	screenSizeX: number, screenSizeY: number
 ): Vector3
+
 	local stepsToX: number
-	local stepsToY: number
 	if normalX < 0 then
 		stepsToX = -originX/normalX
 	elseif normalX > 0 then
@@ -229,6 +229,8 @@ function getBorderHit(
 	else
 		stepsToX = math.huge
 	end
+
+	local stepsToY: number
 	if normalY < 0 then
 		stepsToY = -originY/normalY
 	elseif normalY > 0 then
@@ -236,6 +238,7 @@ function getBorderHit(
 	else
 		stepsToY = math.huge
 	end
+
 	local steps = math.min(stepsToX, stepsToY)
 	if steps == math.huge then
 		return Vector3.new(originX, originY)
@@ -245,6 +248,33 @@ function getBorderHit(
 			originY + normalY * steps
 		)
 	end
+end
+
+local function extendLine(
+	visibleWorldPoint: Vector3, 
+	hiddenWorldPoint: Vector3,
+	visibleScreenPoint: Vector3,
+	camera: Camera
+): Vector3
+	if hiddenWorldPoint == visibleWorldPoint then
+		return visibleScreenPoint
+	end
+	local worldStepPoint = (hiddenWorldPoint - visibleWorldPoint).Unit * MIN_STEP + visibleWorldPoint
+
+	local screenStepPoint, isScreenStepVisible = camera:WorldToViewportPoint(worldStepPoint)
+	local screenLineNormalV2 = (
+		Vector2.new(screenStepPoint.X, screenStepPoint.Y) 
+		- Vector2.new(visibleScreenPoint.X, visibleScreenPoint.Y)
+	).Unit
+
+	local screenLineNormal = Vector3.new(screenLineNormalV2.X, screenLineNormalV2.Y)
+	assert(isScreenStepVisible, `nIV is not visible, \nstepPoint=[{screenStepPoint.X}, {screenStepPoint.Y}] \norigin=[{visibleScreenPoint.X}, {visibleScreenPoint.Y}] \nnorm=[{screenLineNormal.X}, {screenLineNormal.Y}]`)
+
+	return getBorderHit(
+		visibleScreenPoint.X, visibleScreenPoint.Y,
+		screenLineNormal.X, screenLineNormal.Y,
+		camera.ViewportSize.X, camera.ViewportSize.Y
+	)
 end
 
 function getCenterId(cf: CFrame, size: Vector3, cameraCF: CFrame): PerspectiveId
@@ -341,6 +371,7 @@ function Util.getWorldPerimeter(cf: CFrame, size: Vector3, cameraCF: CFrame): {[
 	return perimeter
 end
 
+
 function Util.getScreenPerimeter(cf: CFrame, size: Vector3, camera: Camera): {[number]: Vector3}
 	local worldPoints = Util.getWorldPerimeter(cf, size, camera:GetRenderCFrame())
 	local initialScreenPoints: {[number]: Vector3} = table.create(#worldPoints)
@@ -353,54 +384,59 @@ function Util.getScreenPerimeter(cf: CFrame, size: Vector3, camera: Camera): {[n
 		)
 	end
 
-	for i, initialScreenPoint in ipairs(initialScreenPoints) do
+	for i, screenPoint in ipairs(initialScreenPoints) do
+		local nI = if #initialScreenPoints < i+1 then 1 else i
+		local pI = if i==1 then #initialScreenPoints else i-1
+
+		local nextScreenPoint = initialScreenPoints[nI]
+		local prevScreenPoint = initialScreenPoints[pI]
+
+		local worldPoint = worldPoints[i]
+		local nextWorldPoint = worldPoints[nI]
+		local prevWorldPoint = worldPoints[pI]
+
 		local isVisible = pointVisibility[i]
-		local nextIsVisible = pointVisibility[i+1] or pointVisibility[1]
-		if isVisible and nextIsVisible then
-			table.insert(finalScreenPoints, initialScreenPoint)
+		local nextIsVisible = pointVisibility[nI]
+		local prevIsVisible = pointVisibility[pI]
+	
+		if isVisible then
+			if not prevIsVisible then
+				table.insert(finalScreenPoints, extendLine(
+					worldPoint,
+					prevWorldPoint,
+					screenPoint,
+					camera
+				))
+			end
+			table.insert(finalScreenPoints, screenPoint)
+			if not nextIsVisible then
+				table.insert(finalScreenPoints, extendLine(
+					worldPoint,
+					nextWorldPoint,
+					screenPoint,
+					camera
+				))
+			end
 		else
-			if isVisible or nextIsVisible then
-				local worldPoint = worldPoints[i]
-				local nextWorldPoint = worldPoints[i+1] or worldPoints[1]
+			if nextIsVisible then
+				table.insert(finalScreenPoints, extendLine(
+					nextWorldPoint,
+					worldPoint,
+					nextScreenPoint,
+					camera
+				))
+			end
 
-				if nextIsVisible then
-
-					local worldStepPoint = (worldPoint - nextWorldPoint).Unit * MIN_STEP + nextWorldPoint
-					local screenStepPoint, isScreenStepVisible = camera:WorldToViewportPoint(worldStepPoint)
-
-					local nextScreenPoint = initialScreenPoints[i+1] or initialScreenPoints[1]
-					local invScreenLineNormal = (screenStepPoint - nextScreenPoint).Unit
-					assert(isScreenStepVisible, `nIV is not visible, \nstepPoint=[{screenStepPoint.X}, {screenStepPoint.Y}] \norigin=[{nextScreenPoint.X}, {nextScreenPoint.Y}] \nsize=[{size.X}, {size.Y}] \nnorm=[{invScreenLineNormal.X}, {invScreenLineNormal.Y}]`)
-
-					table.insert(
-						finalScreenPoints, 
-						getBorderHit(
-							nextScreenPoint.X, nextScreenPoint.Y,
-							invScreenLineNormal.X, invScreenLineNormal.Y,
-							size.X, size.Y
-						)
-					)
-				else
-					table.insert(finalScreenPoints, initialScreenPoint)
-					local worldStepPoint = (nextWorldPoint - worldPoint).Unit * MIN_STEP + worldPoint
-					local screenStepPoint, isScreenStepVisible = camera:WorldToViewportPoint(worldStepPoint)
-
-					local screenLineNormal = (screenStepPoint - initialScreenPoint).Unit
-					assert(isScreenStepVisible, `iV is not visible, \nstepPoint=[{screenStepPoint.X}, {screenStepPoint.Y}] \norigin=[{initialScreenPoint.X}, {initialScreenPoint.Y}] \nsize=[{size.X}, {size.Y}] \nnorm=[{screenLineNormal.X}, {screenLineNormal.Y}]`)
-
-					table.insert(
-						finalScreenPoints, 
-						getBorderHit(
-							initialScreenPoint.X, initialScreenPoint.Y,
-							screenLineNormal.X, screenLineNormal.Y,
-							size.X, size.Y
-						)
-					)
-				end
+			if prevIsVisible then
+				table.insert(finalScreenPoints, extendLine(
+					prevWorldPoint,
+					worldPoint,
+					prevScreenPoint,
+					camera
+				))
 			end
 		end
 	end
-
 	if #finalScreenPoints >= 3 then
 		return finalScreenPoints
 	else

@@ -273,11 +273,13 @@ return function(frame: Frame)
 				editableImage.Size,
 				table.create(editableImage.Size.X*editableImage.Size.Y*4, 0)
 			)
-			local screenPoints = getScreenPerimeter(
+			local start = tick()
+			local screenPoints = PerspectiveUtil.getScreenPerimeter(
 				PerspectiveBlock.CFrame,
 				PerspectiveBlock.Size,
 				workspace.CurrentCamera
 			)
+			print(2/(1000*(tick()-start)), "ms")
 			for i, v in ipairs(screenPoints) do
 				local nv = screenPoints[i+1] or screenPoints[1]
 				nv = Vector3.new(
