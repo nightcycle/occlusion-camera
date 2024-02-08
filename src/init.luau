@@ -8,8 +8,6 @@ local CollectionService = game:GetService("CollectionService")
 -- Packages
 local Maid = require(_Packages:WaitForChild("Maid"))
 local Signal = require(_Packages:WaitForChild("Signal"))
--- local Draw = require(_Packages:WaitForChild("Draw"))
--- local TableUtil = require(_Packages:WaitForChild("TableUtil"))
 local Queue = require(_Packages:WaitForChild("Queue"))
 
 -- Modules

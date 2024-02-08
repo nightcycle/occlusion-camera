@@ -5,6 +5,10 @@
 local Frustum = require(game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("package"):WaitForChild("Frustum"))
 -- Types
 type Frustum = Frustum.Frustum
+type BenchmarkProfiler = {
+	Begin: (label: string) -> (),
+	End: () -> (),
+}
 type TestFunction<V> = (profiler: BenchmarkProfiler, parameter: V) -> ()
 type TestModule<V> = {
 	ParameterGenerator: () -> V,
@@ -52,7 +56,7 @@ function new(generator: () -> Parameter): TestModule<Parameter>
 				local frustum = parameter.Frustum
 				for i, v in ipairs(parameter.Parts) do
 					assert(v:IsA("BasePart"))
-					frustum:GetIfBlockRendered(v.CFrame, v.Size, profiler)
+					frustum:GetIfBlockRendered(v.CFrame, v.Size)
 				end
 			end,
 			["Plane"] = function(profiler: BenchmarkProfiler, parameter: Parameter)

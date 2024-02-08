@@ -18,8 +18,7 @@ type PerspectiveId = CornerId | EdgeId | FaceId
 type Frustum = Frustum.Frustum
 
 -- Constants
-
-
+local MIN_STEP = 0.001
 local TRIANGLE_DATA: {[PerspectiveId]: {[number]: {[number]: CornerId}}} = {
 	X = {
 		{"Xyz", "XYz", "XYZ"},
@@ -216,28 +215,36 @@ local CORNER_OFFSET: {[CornerId]: Vector3} = {
 -- Variables
 -- References
 -- Private Functions
--- https://stackoverflow.com/questions/5666222/3d-line-plane-intersection
-function getPlaneIntersection(
-	planeOrigin: Vector3,
-	planeNormal: Vector3,
-	rayOrigin: Vector3,
-	rayDirection: Vector3
-): Vector3?
-	local dot = planeNormal:Dot(rayDirection)
-	if math.abs(dot) > 1e-6 then
-		-- The factor of the point between rayOrigin -> rayLimit (0 - 1)
-		local w = rayOrigin - planeOrigin
-		-- if 'fac' is between (0 - 1) the point intersects with the segment.
-		-- Otherwise:
-		-- < 0.0: behind rayOrigin.
-		-- > 1.0: infront of rayLimit.
-		local fac = -(planeNormal:Dot(w)) / dot
-		if fac >= 0 and fac <= 1 then
-			rayDirection = rayDirection * fac
-			return rayOrigin + rayDirection
-		end
+function getBorderHit(
+	originX: number, originY: number,
+	normalX: number, normalY: number, 
+	screenSizeX: number, screenSizeY: number
+): Vector3
+	local stepsToX: number
+	local stepsToY: number
+	if normalX < 0 then
+		stepsToX = -originX/normalX
+	elseif normalX > 0 then
+		stepsToX = (screenSizeX-originX)/normalX
+	else
+		stepsToX = math.huge
 	end
-	return nil
+	if normalY < 0 then
+		stepsToY = -originY/normalY
+	elseif normalY > 0 then
+		stepsToY = (screenSizeY-originY)/normalY
+	else
+		stepsToY = math.huge
+	end
+	local steps = math.min(stepsToX, stepsToY)
+	if steps == math.huge then
+		return Vector3.new(originX, originY)
+	else
+		return Vector3.new(
+			originX + normalX * steps,
+			originY + normalY * steps
+		)
+	end
 end
 
 function getCenterId(cf: CFrame, size: Vector3, cameraCF: CFrame): PerspectiveId
@@ -338,62 +345,67 @@ function Util.getScreenPerimeter(cf: CFrame, size: Vector3, camera: Camera): {[n
 	local worldPoints = Util.getWorldPerimeter(cf, size, camera:GetRenderCFrame())
 	local initialScreenPoints: {[number]: Vector3} = table.create(#worldPoints)
 	local pointVisibility: {[number]: boolean} = table.create(#worldPoints)
-	local visCount = 0
+	local finalScreenPoints: {[number]: Vector3} = table.create(#worldPoints)
 
 	for i, v in ipairs(worldPoints) do
 		initialScreenPoints[i], pointVisibility[i] = camera:WorldToViewportPoint(
 			v
 		)
+	end
 
-		if pointVisibility[i] then
-			visCount += 1
+	for i, initialScreenPoint in ipairs(initialScreenPoints) do
+		local isVisible = pointVisibility[i]
+		local nextIsVisible = pointVisibility[i+1] or pointVisibility[1]
+		if isVisible and nextIsVisible then
+			table.insert(finalScreenPoints, initialScreenPoint)
+		else
+			if isVisible or nextIsVisible then
+				local worldPoint = worldPoints[i]
+				local nextWorldPoint = worldPoints[i+1] or worldPoints[1]
+
+				if nextIsVisible then
+
+					local worldStepPoint = (worldPoint - nextWorldPoint).Unit * MIN_STEP + nextWorldPoint
+					local screenStepPoint, isScreenStepVisible = camera:WorldToViewportPoint(worldStepPoint)
+
+					local nextScreenPoint = initialScreenPoints[i+1] or initialScreenPoints[1]
+					local invScreenLineNormal = (screenStepPoint - nextScreenPoint).Unit
+					assert(isScreenStepVisible, `nIV is not visible, \nstepPoint=[{screenStepPoint.X}, {screenStepPoint.Y}] \norigin=[{nextScreenPoint.X}, {nextScreenPoint.Y}] \nsize=[{size.X}, {size.Y}] \nnorm=[{invScreenLineNormal.X}, {invScreenLineNormal.Y}]`)
+
+					table.insert(
+						finalScreenPoints, 
+						getBorderHit(
+							nextScreenPoint.X, nextScreenPoint.Y,
+							invScreenLineNormal.X, invScreenLineNormal.Y,
+							size.X, size.Y
+						)
+					)
+				else
+					table.insert(finalScreenPoints, initialScreenPoint)
+					local worldStepPoint = (nextWorldPoint - worldPoint).Unit * MIN_STEP + worldPoint
+					local screenStepPoint, isScreenStepVisible = camera:WorldToViewportPoint(worldStepPoint)
+
+					local screenLineNormal = (screenStepPoint - initialScreenPoint).Unit
+					assert(isScreenStepVisible, `iV is not visible, \nstepPoint=[{screenStepPoint.X}, {screenStepPoint.Y}] \norigin=[{initialScreenPoint.X}, {initialScreenPoint.Y}] \nsize=[{size.X}, {size.Y}] \nnorm=[{screenLineNormal.X}, {screenLineNormal.Y}]`)
+
+					table.insert(
+						finalScreenPoints, 
+						getBorderHit(
+							initialScreenPoint.X, initialScreenPoint.Y,
+							screenLineNormal.X, screenLineNormal.Y,
+							size.X, size.Y
+						)
+					)
+				end
+			end
 		end
 	end
-	local lines: {[number]: Ray} = table.create(#worldPoints)
 
-	for i, a in ipairs(initialScreenPoints) do
-		local b = initialScreenPoints[i+1] or initialScreenPoints[1]
-		lines[i] = Ray.new(Vector3.new(a.X, a.Y, 0), Vector3.new(b.X, b.Y, 0)-Vector3.new(a.X, a.Y, 0))
+	if #finalScreenPoints >= 3 then
+		return finalScreenPoints
+	else
+		return {}
 	end
-	local planes = {
-		[-1] = Ray.new(
-			Vector3.new(size.X/2,0),
-			Vector3.new(0,1)
-		),
-
-	}
-	local borders = {
-		Ray.new(
-			Vector3.new(0,0),
-			Vector3.new(0,-size.Y)
-		),
-		Ray.new(
-			Vector3.new(size.X,0),
-			Vector3.new(0,-size.Y)
-		),
-		Ray.new(
-			Vector3.new(0,0),
-			Vector3.new(size.X,0)
-		),
-		Ray.new(
-			Vector3.new(0,size.Y),
-			Vector3.new(size.X,0)
-		),
-	}
-
-	for i, line in ipairs(lines) do
-		if line.Direction.X > 0 and line.Direction.Y > 0 then --down right
-
-		elseif line.Direction.X > 0 and line.Direction.Y < 0 then --up right
-
-		elseif line.Direction.X < 0 and line.Direction.Y > 0 then --down left
-
-		elseif line.Direction.X < 0 and line.Direction.Y < 0 then --up left
-
-		end
-	end
-
-	return initialScreenPoints
 end
 
 return Util

@@ -50,7 +50,7 @@ export type Frustum = {
 	GetIfTriangleRendered: (self: Frustum, a: Vector3, b: Vector3, c: Vector3) -> boolean,
 	-- GetIfRayRendered: (self: Frustum, ray: Ray) -> boolean,
 	GetIfSphereRendered: (self: Frustum, origin: Vector3, radius: number) -> boolean,
-	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3, profiler: BenchmarkProfiler?) -> boolean,
+	GetIfBlockRendered: (self: Frustum, cf: CFrame, size: Vector3) -> boolean,
 	GetIfPlaneRendered: (self: Frustum, origin: Vector3, normal: Vector3) -> boolean,
 	GetIfOverlapFrustum: (self: Frustum, part: BasePart) -> boolean,
 	_Draw: (self: Frustum) -> Folder,
@@ -281,7 +281,7 @@ function Frustum:GetIfPlaneRendered(origin: Vector3, normal: Vector3): boolean
 	return false
 end
 
-function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3, profiler: BenchmarkProfiler?): boolean
+function Frustum:GetIfBlockRendered(cf: CFrame, size: Vector3): boolean
 	if self:GetIfSphereRendered(cf.Position, size.Magnitude/2) then
 
 		local lVec = self.CFrame.LookVector
