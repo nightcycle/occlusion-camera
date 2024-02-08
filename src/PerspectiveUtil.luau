@@ -5,9 +5,9 @@ local _Packages = _Package.Parent
 
 -- Services
 -- Packages
+local Frustum = require(game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("Frustum"))
 
 -- Modules
-local Frustum = require(script.Parent:WaitForChild("Frustum"))
 -- local ShapeUtil = require(_Package:WaitForChild("ShapeUtil"))
 
 -- Types

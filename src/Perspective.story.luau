@@ -4,10 +4,8 @@ local RunService = game:GetService("RunService")
 -- Packages
 local Maid = require(game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("Maid"))
 local Draw = require(game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("Draw"))
-local TableUtil = require(game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("TableUtil"))
+local Frustum = require(game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("Frustum"))
 -- Modules
-local Frustum = require(script.Parent:WaitForChild("Frustum"))
-
 -- Types
 -- Constants
 -- Variables
@@ -96,148 +94,148 @@ return function(frame: Frame)
 			end
 
 		end
-		local MIN_STEP = 0.001
-		local function constrainPoint(v: Vector3): Vector3
-			return Vector3.new(
-				math.clamp(v.X, 0, editableImage.Size.X-1),
-				math.clamp(v.Y, 0, editableImage.Size.Y-1),
-				v.Z
-			)
-		end
+		-- local MIN_STEP = 0.001
+		-- local function constrainPoint(v: Vector3): Vector3
+		-- 	return Vector3.new(
+		-- 		math.clamp(v.X, 0, editableImage.Size.X-1),
+		-- 		math.clamp(v.Y, 0, editableImage.Size.Y-1),
+		-- 		v.Z
+		-- 	)
+		-- end
 
-		local function getScreenPerimeter(cf: CFrame, size: Vector3, camera: Camera): {[number]: Vector3}
-			local worldPoints = PerspectiveUtil.getWorldPerimeter(cf, size, camera:GetRenderCFrame())
-			local viewportSize = camera.ViewportSize
-			local initialScreenPoints: {[number]: Vector3} = table.create(#worldPoints)
-			local pointVisibility: {[number]: boolean} = table.create(#worldPoints)
-			local finalScreenPoints: {[number]: Vector3} = table.create(#worldPoints)
+		-- local function getScreenPerimeter(cf: CFrame, size: Vector3, camera: Camera): {[number]: Vector3}
+		-- 	local worldPoints = PerspectiveUtil.getWorldPerimeter(cf, size, camera:GetRenderCFrame())
+		-- 	local viewportSize = camera.ViewportSize
+		-- 	local initialScreenPoints: {[number]: Vector3} = table.create(#worldPoints)
+		-- 	local pointVisibility: {[number]: boolean} = table.create(#worldPoints)
+		-- 	local finalScreenPoints: {[number]: Vector3} = table.create(#worldPoints)
 		
-			for i, v in ipairs(worldPoints) do
-				initialScreenPoints[i], pointVisibility[i] = camera:WorldToViewportPoint(
-					v
-				)
-			end
+		-- 	for i, v in ipairs(worldPoints) do
+		-- 		initialScreenPoints[i], pointVisibility[i] = camera:WorldToViewportPoint(
+		-- 			v
+		-- 		)
+		-- 	end
 		
-			for i, screenPoint in ipairs(initialScreenPoints) do
+		-- 	for i, screenPoint in ipairs(initialScreenPoints) do
 
-				local function extendLine(
-					visibleWorldPoint: Vector3, 
-					hiddenWorldPoint: Vector3,
-					visibleScreenPoint: Vector3
-				): Vector3
-					if hiddenWorldPoint == visibleWorldPoint then
-						return visibleScreenPoint
-					end
-					local worldStepPoint = (hiddenWorldPoint - visibleWorldPoint).Unit * MIN_STEP + visibleWorldPoint
-					-- drawMaid:GiveTask(Draw.vector(
-					-- 	hiddenWorldPoint,
-					-- 	visibleWorldPoint-hiddenWorldPoint,
-					-- 	Color3.new(1,0,0),
-					-- 	nil,
-					-- 	2
-					-- ))
+		-- 		local function extendLine(
+		-- 			visibleWorldPoint: Vector3, 
+		-- 			hiddenWorldPoint: Vector3,
+		-- 			visibleScreenPoint: Vector3
+		-- 		): Vector3
+		-- 			if hiddenWorldPoint == visibleWorldPoint then
+		-- 				return visibleScreenPoint
+		-- 			end
+		-- 			local worldStepPoint = (hiddenWorldPoint - visibleWorldPoint).Unit * MIN_STEP + visibleWorldPoint
+		-- 			-- drawMaid:GiveTask(Draw.vector(
+		-- 			-- 	hiddenWorldPoint,
+		-- 			-- 	visibleWorldPoint-hiddenWorldPoint,
+		-- 			-- 	Color3.new(1,0,0),
+		-- 			-- 	nil,
+		-- 			-- 	2
+		-- 			-- ))
 		
-					local screenStepPoint, isScreenStepVisible = camera:WorldToViewportPoint(worldStepPoint)
-					local screenLineNormalV2 = (
-						Vector2.new(screenStepPoint.X, screenStepPoint.Y) 
-						- Vector2.new(visibleScreenPoint.X, visibleScreenPoint.Y)
-					).Unit
+		-- 			local screenStepPoint, isScreenStepVisible = camera:WorldToViewportPoint(worldStepPoint)
+		-- 			local screenLineNormalV2 = (
+		-- 				Vector2.new(screenStepPoint.X, screenStepPoint.Y) 
+		-- 				- Vector2.new(visibleScreenPoint.X, visibleScreenPoint.Y)
+		-- 			).Unit
 		
-					local screenLineNormal = Vector3.new(screenLineNormalV2.X, screenLineNormalV2.Y)
-					assert(isScreenStepVisible, `nIV is not visible, \nstepPoint=[{screenStepPoint.X}, {screenStepPoint.Y}] \norigin=[{visibleScreenPoint.X}, {visibleScreenPoint.Y}] \nnorm=[{screenLineNormal.X}, {screenLineNormal.Y}]`)
-					drawLine(visibleScreenPoint, screenStepPoint, Color3.new(1,1,0))
+		-- 			local screenLineNormal = Vector3.new(screenLineNormalV2.X, screenLineNormalV2.Y)
+		-- 			assert(isScreenStepVisible, `nIV is not visible, \nstepPoint=[{screenStepPoint.X}, {screenStepPoint.Y}] \norigin=[{visibleScreenPoint.X}, {visibleScreenPoint.Y}] \nnorm=[{screenLineNormal.X}, {screenLineNormal.Y}]`)
+		-- 			drawLine(visibleScreenPoint, screenStepPoint, Color3.new(1,1,0))
 		
-					return getBorderHit(
-						visibleScreenPoint.X, visibleScreenPoint.Y,
-						screenLineNormal.X, screenLineNormal.Y,
-						camera.ViewportSize.X, camera.ViewportSize.Y
-					)
-				end
+		-- 			return getBorderHit(
+		-- 				visibleScreenPoint.X, visibleScreenPoint.Y,
+		-- 				screenLineNormal.X, screenLineNormal.Y,
+		-- 				camera.ViewportSize.X, camera.ViewportSize.Y
+		-- 			)
+		-- 		end
 		
-				local nI = if #initialScreenPoints < i+1 then 1 else i
-				local pI = if i==1 then #initialScreenPoints else i-1
+		-- 		local nI = if #initialScreenPoints < i+1 then 1 else i
+		-- 		local pI = if i==1 then #initialScreenPoints else i-1
 
-				local nextScreenPoint = initialScreenPoints[nI]
-				local prevScreenPoint = initialScreenPoints[pI]
+		-- 		local nextScreenPoint = initialScreenPoints[nI]
+		-- 		local prevScreenPoint = initialScreenPoints[pI]
 
-				local worldPoint = worldPoints[i]
-				local nextWorldPoint = worldPoints[nI]
-				local prevWorldPoint = worldPoints[pI]
+		-- 		local worldPoint = worldPoints[i]
+		-- 		local nextWorldPoint = worldPoints[nI]
+		-- 		local prevWorldPoint = worldPoints[pI]
 
-				local isVisible = pointVisibility[i]
-				local nextIsVisible = pointVisibility[nI]
-				local prevIsVisible = pointVisibility[pI]
+		-- 		local isVisible = pointVisibility[i]
+		-- 		local nextIsVisible = pointVisibility[nI]
+		-- 		local prevIsVisible = pointVisibility[pI]
 				
-				drawMaid:GiveTask(
-					Draw.text(
-						worldPoint,
-						`{i}`
-					)
-				)
-				if isVisible then
-					if not prevIsVisible then
-						table.insert(finalScreenPoints, extendLine(
-							worldPoint,
-							prevWorldPoint,
-							screenPoint
-						))
-					end
-					table.insert(finalScreenPoints, screenPoint)
-					if not nextIsVisible then
-						table.insert(finalScreenPoints, extendLine(
-							worldPoint,
-							nextWorldPoint,
-							screenPoint
-						))
-					end
+		-- 		drawMaid:GiveTask(
+		-- 			Draw.text(
+		-- 				worldPoint,
+		-- 				`{i}`
+		-- 			)
+		-- 		)
+		-- 		if isVisible then
+		-- 			if not prevIsVisible then
+		-- 				table.insert(finalScreenPoints, extendLine(
+		-- 					worldPoint,
+		-- 					prevWorldPoint,
+		-- 					screenPoint
+		-- 				))
+		-- 			end
+		-- 			table.insert(finalScreenPoints, screenPoint)
+		-- 			if not nextIsVisible then
+		-- 				table.insert(finalScreenPoints, extendLine(
+		-- 					worldPoint,
+		-- 					nextWorldPoint,
+		-- 					screenPoint
+		-- 				))
+		-- 			end
 
 					
-				else
-					if nextIsVisible then
-						table.insert(finalScreenPoints, extendLine(
-							nextWorldPoint,
-							worldPoint,
-							nextScreenPoint
-						))
-					end
+		-- 		else
+		-- 			if nextIsVisible then
+		-- 				table.insert(finalScreenPoints, extendLine(
+		-- 					nextWorldPoint,
+		-- 					worldPoint,
+		-- 					nextScreenPoint
+		-- 				))
+		-- 			end
 
-					if prevIsVisible then
-						table.insert(finalScreenPoints, extendLine(
-							prevWorldPoint,
-							worldPoint,
-							prevScreenPoint
-						))
-					end
-				end
+		-- 			if prevIsVisible then
+		-- 				table.insert(finalScreenPoints, extendLine(
+		-- 					prevWorldPoint,
+		-- 					worldPoint,
+		-- 					prevScreenPoint
+		-- 				))
+		-- 			end
+		-- 		end
 
 
-				-- if isVisible and nextIsVisible then
-				-- 	table.insert(finalScreenPoints, screenPoint)
-				-- else
-				-- 	if nextIsVisible then
-				-- 		table.insert(finalScreenPoints, extendLine(
-				-- 			nextWorldPoint,
-				-- 			worldPoint,
-				-- 			nextScreenPoint
-				-- 		))
-				-- 	elseif prevIsVisible then
-				-- 		table.insert(finalScreenPoints, extendLine(
-				-- 			prevWorldPoint,
-				-- 			worldPoint,
-				-- 			prevScreenPoint
-				-- 		))
+		-- 		-- if isVisible and nextIsVisible then
+		-- 		-- 	table.insert(finalScreenPoints, screenPoint)
+		-- 		-- else
+		-- 		-- 	if nextIsVisible then
+		-- 		-- 		table.insert(finalScreenPoints, extendLine(
+		-- 		-- 			nextWorldPoint,
+		-- 		-- 			worldPoint,
+		-- 		-- 			nextScreenPoint
+		-- 		-- 		))
+		-- 		-- 	elseif prevIsVisible then
+		-- 		-- 		table.insert(finalScreenPoints, extendLine(
+		-- 		-- 			prevWorldPoint,
+		-- 		-- 			worldPoint,
+		-- 		-- 			prevScreenPoint
+		-- 		-- 		))
 
-				-- 	end
-				-- end
+		-- 		-- 	end
+		-- 		-- end
 	
-			end
-			print(#initialScreenPoints, "->",#finalScreenPoints)
-			if #finalScreenPoints >= 3 then
-				return finalScreenPoints
-			else
-				return {}
-			end
-		end
+		-- 	end
+		-- 	print(#initialScreenPoints, "->",#finalScreenPoints)
+		-- 	if #finalScreenPoints >= 3 then
+		-- 		return finalScreenPoints
+		-- 	else
+		-- 		return {}
+		-- 	end
+		-- end
 
 		local prevFrustum: Frustum.Frustum?
 

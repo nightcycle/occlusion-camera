@@ -9,10 +9,10 @@ local CollectionService = game:GetService("CollectionService")
 local Maid = require(_Packages:WaitForChild("Maid"))
 local Signal = require(_Packages:WaitForChild("Signal"))
 local Queue = require(_Packages:WaitForChild("Queue"))
+local Frustum = require(_Packages:WaitForChild("Frustum"))
 
 -- Modules
 local Config = require(_Package:WaitForChild("Config"))
-local Frustum = require(_Package:WaitForChild("Frustum"))
 
 -- Types
 -- Constants
